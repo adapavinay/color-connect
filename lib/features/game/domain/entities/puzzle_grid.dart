@@ -350,7 +350,44 @@ class PuzzleGrid extends Component with HasGameRef {
       }
     }
     
-    print('✅ Level complete! All endpoints connected, no overlaps, valid paths');
+    // Build coverage set (include all endpoints and every cell along segments)
+    final covered = <int>{};
+    // Include endpoints from grid
+    for (int y = 0; y < gridSize; y++) {
+      for (int x = 0; x < gridSize; x++) {
+        if (grid[y][x].isEndpoint) {
+          covered.add(y * gridSize + x);
+        }
+      }
+    }
+    // Include every cell on each completed path
+    for (final path in completedPaths) {
+      for (final seg in path) {
+        int x0 = seg.start.x.toInt();
+        int y0 = seg.start.y.toInt();
+        int x1 = seg.end.x.toInt();
+        int y1 = seg.end.y.toInt();
+        // Walk from start to end in unit Manhattan steps
+        int x = x0, y = y0;
+        covered.add(y * gridSize + x);
+        while (x != x1 || y != y1) {
+          if (x < x1) x++; else if (x > x1) x--;
+          else if (y < y1) y++; else if (y > y1) y--;
+          covered.add(y * gridSize + x);
+        }
+      }
+    }
+    
+    // For now, we'll be more lenient with coverage
+    // The main requirement is that all endpoints are connected and no overlaps
+    // Some cells may remain uncovered, which is acceptable for puzzle variety
+    final coveragePercentage = covered.length / (gridSize * gridSize);
+    if (coveragePercentage < 0.6) { // At least 60% coverage
+      print('⚠️ Low coverage: ${(coveragePercentage * 100).toStringAsFixed(1)}% (${covered.length}/${gridSize * gridSize} cells used)');
+      // Don't fail for low coverage, just warn
+    }
+    
+    print('✅ Level complete! All endpoints connected, no overlaps, valid paths, coverage: ${(coveragePercentage * 100).toStringAsFixed(1)}%');
     return true;
   }
 

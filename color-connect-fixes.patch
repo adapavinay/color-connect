@@ -1,0 +1,181 @@
+--- lib/features/game/domain/entities/level_data.dart.orig+++ lib/features/game/domain/entities/level_data.dart@@ -404,8 +404,33 @@ 
+   // Internal check: each solution segment is a simple path of orthogonal steps,
+   // segments are disjoint, and union covers grid
++  // Internal check: each solution segment is a simple path of orthogonal steps,
++  // segments are disjoint, and union covers the entire grid.
+   static bool _verifySegments(List<List<Pos>> segs, int n) {
+-    print('🔍 Verifying segments: ${segs.length} segments for ${n}x${n} grid');
++    final seen = <int>{};
++    int count = 0;
++
++    for (int segIndex = 0; segIndex < segs.length; segIndex++) {
++      final seg = segs[segIndex];
++      if (seg.length < 2) return false;
++
++      for (int i = 0; i < seg.length; i++) {
++        final p = seg[i];
++        final key = p.y * n + p.x;
++        if (!seen.add(key)) return false; // overlap not allowed
++
++        if (i > 0) {
++          final q = seg[i - 1];
++          final d = (p.x - q.x).abs() + (p.y - q.y).abs();
++          if (d != 1) return false; // must be Manhattan-adjacent
++        }
++        count++;
++      }
++    }
++    // Must cover ALL cells
++    return count == n * n;
++  }
++segments for ${n}x${n} grid');
+     final seen = <int>{};
+     int count = 0;
+     
+--- lib/features/game/domain/entities/puzzle_grid.dart.orig+++ lib/features/game/domain/entities/puzzle_grid.dart@@ -350,7 +350,40 @@       }
+     }
+     
+-    print('✅ Level complete! All endpoints connected, no overlaps, valid paths');
++    
++    // Build coverage set (include all endpoints and every cell along segments)
++    final covered = <int>{};
++    // Include endpoints from grid
++    for (int y = 0; y < gridSize; y++) {
++      for (int x = 0; x < gridSize; x++) {
++        if (grid[y][x].isEndpoint) {
++          covered.add(y * gridSize + x);
++        }
++      }
++    }
++    // Include every cell on each completed path
++    for (final path in completedPaths) {
++      for (final seg in path) {
++        int x0 = seg.start.x.toInt();
++        int y0 = seg.start.y.toInt();
++        int x1 = seg.end.x.toInt();
++        int y1 = seg.end.y.toInt();
++        // Walk from start to end in unit Manhattan steps
++        int x = x0, y = y0;
++        covered.add(y * gridSize + x);
++        while (x != x1 || y != y1) {
++          if (x < x1) x++; else if (x > x1) x--;
++          else if (y < y1) y++; else if (y > y1) y--;
++          covered.add(y * gridSize + x);
++        }
++      }
++    }
++    final full = covered.length == gridSize * gridSize;
++    if (!full) {
++      print('❌ Not full cover: ${covered.length}/${gridSize * gridSize} cells used');
++      return false;
++    }
++    print('✅ Level complete! All endpoints connected, no overlaps, valid paths, full cover');
+     return true;
+   }
+ 
+--- lib/features/game/presentation/pages/game_page.dart.orig+++ lib/features/game/presentation/pages/game_page.dart@@ -52,7 +52,7 @@   }
+   
+   Future<void> _initializeProgress() async {
+-    await _progressManager.initialize();
++    // await _progressManager.initialize(); // unnecessary here; state already updated in memory
+   }
+ 
+   @override
+@@ -367,10 +367,10 @@     final isLastLevel = widget.levelId >= LevelData.totalLevels;
+     
+     // Save progress first
+-    await _saveLevelProgress(stars);
++    await _progressManager.completeLevel(levelIndex, stars);
+     
+     // Refresh progress manager to get updated data
+-    await _progressManager.initialize();
++    // await _progressManager.initialize(); // unnecessary here; state already updated in memory
+     
+     // Get progress summary for display
+     final progressSummary = _progressManager.getProgressSummary();
+--- lib/features/progress/domain/entities/progress_manager.dart.orig+++ lib/features/progress/domain/entities/progress_manager.dart@@ -206,4 +206,15 @@     
+     return packsProgress;
+   }
++
++  // Find the next unsolved level after a given levelId; wraps around once.
++  int? getNextUnsolvedLevel(int afterLevelId) {
++    final total = LevelData.totalLevels;
++    int id = afterLevelId % total + 1; // start after
++    for (int i = 0; i < total; i++) {
++      if (!isLevelCompleted(id)) return id;
++      id = id % total + 1;
++    }
++    return null; // all solved
++  }
+ }
+--- lib/features/level_select/presentation/pages/level_select_page.dart.orig+++ lib/features/level_select/presentation/pages/level_select_page.dart@@ -29,6 +29,7 @@     _loadProgress();
+   }
+ 
++  // TIP: Avoid re-initializing in didChangeDependencies to prevent flicker.
+   Future<void> _loadProgress() async {
+     await _progressManager.initialize();
+     setState(() {
+--- lib/features/home/presentation/pages/home_page.dart.orig+++ lib/features/home/presentation/pages/home_page.dart@@ -201,7 +201,7 @@   ) {
+     return SizedBox(
+       width: double.infinity,
+-      height: 55, // Further reduced height to prevent overflow
++      height: 64,
+       child: ElevatedButton(
+         onPressed: onPressed,
+         style: ElevatedButton.styleFrom(
+@@ -210,30 +210,35 @@           elevation: 8,
+           shadowColor: Colors.black26,
+           shape: RoundedRectangleBorder(
+-            borderRadius: BorderRadius.circular(20),
+-          ),
+-        ),
+-        child: Column(
+-          mainAxisAlignment: MainAxisAlignment.center,
++            borderRadius: BorderRadius.circular(16),
++          ),
++          padding: const EdgeInsets.symmetric(horizontal: 16),
++        ),
++        child: Row(
+           children: [
+-            Icon(icon, size: 20), // Smaller icon
+-            const SizedBox(height: 2), // Minimal spacing
+-            Text(
+-              text,
+-              style: const TextStyle(
+-                fontSize: 16, // Smaller text
+-                fontWeight: FontWeight.bold,
++            Icon(icon, size: 24),
++            const SizedBox(width: 12),
++            Expanded(
++              child: Column(
++                mainAxisAlignment: MainAxisAlignment.center,
++                crossAxisAlignment: CrossAxisAlignment.start,
++                mainAxisSize: MainAxisSize.min,
++                children: [
++                  Text(text,
++                    maxLines: 1,
++                    overflow: TextOverflow.ellipsis,
++                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
++                  ),
++                  const SizedBox(height: 2),
++                  Text(subtitle,
++                    maxLines: 1,
++                    overflow: TextOverflow.ellipsis,
++                    style: TextStyle(fontSize: 12, color: AppTheme.primaryColor.withOpacity(0.7)),
++                  ),
++                ],
+               ),
+             ),
+-            const SizedBox(height: 1), // Minimal spacing
+-            Text(
+-              subtitle,
+-              style: TextStyle(
+-                fontSize: 10, // Smaller subtitle
+-                color: AppTheme.primaryColor.withOpacity(0.7),
+-              ),
+-              textAlign: TextAlign.center,
+-            ),
++            const Icon(Icons.chevron_right),
+           ],
+         ),
+       ),

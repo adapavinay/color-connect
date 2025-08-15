@@ -84,7 +84,13 @@ class ProgressManager {
     _completedLevels.add(levelId);
     _levelScores[levelId] = starsEarned;
 
+    // Save progress immediately
     await _saveProgress();
+    
+    // Debug information
+    print('🎯 Progress updated: Level $levelId completed with $starsEarned stars');
+    print('🎯 Total stars: $_totalStars');
+    print('🎯 Completed levels: ${_completedLevels.length}');
   }
 
   // Get stars earned for a specific level
@@ -199,5 +205,16 @@ class ProgressManager {
     }
     
     return packsProgress;
+  }
+
+  // Find the next unsolved level after a given levelId; wraps around once.
+  int? getNextUnsolvedLevel(int afterLevelId) {
+    final total = LevelData.totalLevels;
+    int id = afterLevelId % total + 1; // start after
+    for (int i = 0; i < total; i++) {
+      if (!isLevelCompleted(id)) return id;
+      id = id % total + 1;
+    }
+    return null; // all solved
   }
 }

@@ -22,8 +22,13 @@ class _LevelSelectPageState extends State<LevelSelectPage> {
     _loadProgress();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Remove refresh logic from here - it doesn't fire on pop
+  }
+
   Future<void> _loadProgress() async {
-    await _progressManager.initialize();
     setState(() {
       _packsProgress = _progressManager.getAllPacksProgress();
       _isLoading = false;
@@ -317,13 +322,17 @@ class _LevelSelectPageState extends State<LevelSelectPage> {
     );
   }
 
-  void _selectPack(BuildContext context, int packNumber) {
-    Navigator.push(
+  Future<void> _selectPack(BuildContext context, int packNumber) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PackLevelsPage(packNumber: packNumber),
       ),
     );
+    if (!mounted) return;
+    setState(() {
+      _packsProgress = _progressManager.getAllPacksProgress(); // refresh pack progress
+    });
   }
 }
 
@@ -455,12 +464,15 @@ class _PackLevelsPageState extends State<PackLevelsPage> {
     );
   }
 
-  void _startLevel(BuildContext context, int levelId) {
-    Navigator.push(
+  Future<void> _startLevel(BuildContext context, int levelId) async {
+    await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => GamePage(levelId: levelId),
-      ),
+      MaterialPageRoute(builder: (context) => GamePage(levelId: levelId)),
     );
+    if (!mounted) return;
+    // Refresh the level data to show updated completion status
+    setState(() {
+      _loadPackData();
+    });
   }
 }

@@ -3,9 +3,38 @@ import 'package:color_connect/core/theme/app_theme.dart';
 import 'package:color_connect/features/level_select/presentation/pages/level_select_page.dart';
 import 'package:color_connect/features/settings/presentation/pages/settings_page.dart';
 import 'package:color_connect/features/store/presentation/pages/star_store_page.dart';
+import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  late ProgressManager _progressManager;
+  Map<String, dynamic> _progressSummary = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgress();
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Remove refresh logic from here - it doesn't fire on pop
+  }
+
+  Future<void> _loadProgress() async {
+    _progressManager = ProgressManager();
+    await _progressManager.initialize();
+    setState(() {
+      _progressSummary = _progressManager.getProgressSummary();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,89 +52,144 @@ class HomePage extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-            child: Column(
-              children: [
-                // Flexible space at top
-                const Spacer(flex: 1),
-                
-                // Game Title
-                const Text(
-                  'Color Connect',
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(
-                        offset: Offset(2, 2),
-                        blurRadius: 4,
-                        color: Colors.black26,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+              child: Column(
+                children: [
+                  // Game Title
+                  const Text(
+                    'Color Connect',
+                    style: TextStyle(
+                      fontSize: 42,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          offset: Offset(2, 2),
+                          blurRadius: 4,
+                          color: Colors.black26,
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Connect the colors, solve the puzzle!',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white.withOpacity(0.9),
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Progress Display Section
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Your Progress',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildProgressItem(
+                              '⭐ Stars',
+                              '${_progressSummary['totalStars'] ?? 0}',
+                              AppTheme.yellow,
+                            ),
+                            _buildProgressItem(
+                              '🎯 Completed',
+                              '${_progressSummary['completedLevels'] ?? 0}/${_progressSummary['totalLevels'] ?? 800}',
+                              AppTheme.blue,
+                            ),
+                            _buildProgressItem(
+                              '📊 Progress',
+                              '${(_progressSummary['completionPercentage'] ?? 0.0).toStringAsFixed(1)}%',
+                              AppTheme.green,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
+
+                  // Main Action Buttons
+                  Column(
+                    children: [
+                      _buildActionButton(
+                        context,
+                        '🎮 Play',
+                        'Start your puzzle adventure',
+                        Icons.play_arrow,
+                        () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const LevelSelectPage(),
+                            ),
+                          );
+                          if (!mounted) return;
+                          setState(() {
+                            _progressSummary = _progressManager.getProgressSummary(); // total stars, completion %
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _buildActionButton(
+                        context,
+                        '⭐ Store',
+                        'Get more stars to unlock packs',
+                        Icons.store,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const StarStorePage(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildActionButton(
+                        context,
+                        '⚙️ Settings',
+                        'Customize your experience',
+                        Icons.settings,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsPage(),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Connect the colors, solve the puzzle!',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.white.withOpacity(0.9),
-                    fontStyle: FontStyle.italic,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
-
-                // Main Action Buttons
-                Column(
-                  children: [
-                    _buildActionButton(
-                      context,
-                      '🎮 Play',
-                      'Start your puzzle adventure',
-                      Icons.play_arrow,
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const LevelSelectPage(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildActionButton(
-                      context,
-                      '⭐ Store',
-                      'Get more stars to unlock packs',
-                      Icons.store,
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const StarStorePage(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildActionButton(
-                      context,
-                      '⚙️ Settings',
-                      'Customize your experience',
-                      Icons.settings,
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SettingsPage(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                
-                // Flexible space at bottom
-                const Spacer(flex: 1),
-              ],
+                  
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),
@@ -118,11 +202,11 @@ class HomePage extends StatelessWidget {
     String text,
     String subtitle,
     IconData icon,
-    VoidCallback onPressed,
+    dynamic onPressed,
   ) {
     return SizedBox(
       width: double.infinity,
-      height: 65,
+      height: 64,
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
@@ -131,33 +215,62 @@ class HomePage extends StatelessWidget {
           elevation: 8,
           shadowColor: Colors.black26,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Row(
           children: [
-            Icon(icon, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              text,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
+            Icon(icon, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: AppTheme.primaryColor.withOpacity(0.7)),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withOpacity(0.8),
-              ),
-              textAlign: TextAlign.center,
-            ),
+            const Icon(Icons.chevron_right),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildProgressItem(String title, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 14, // Reduced from 16
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 6), // Reduced from 8
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20, // Reduced from 24
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
