@@ -1,8 +1,12 @@
 import 'package:flame/game.dart';
+import 'package:flutter/material.dart';
 import 'package:color_connect/features/game/domain/entities/puzzle_grid.dart';
 import 'package:color_connect/features/game/domain/entities/path_segment.dart';
 
 class ColorConnectGame extends FlameGame {
+  @override
+  Color backgroundColor() => const Color(0xFFF7F8FC);
+  
   late PuzzleGrid puzzleGrid;
   List<PathSegment> currentPath = [];
   int? currentColor;

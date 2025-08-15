@@ -151,7 +151,7 @@ class LevelData {
   }
   
   // Generate a grid using Hamiltonian path segmentation - guarantees solvable, non-intersecting, full-fill puzzles
-  static List<List<int?>> _generateHamiltonianSegmentationGrid(int gridSize, int colorCount, Random random) {
+  static List<List<int?>> _generateHamiltonianSegmentationGrid(int gridSize, int colorCount, Random random, {int minSegmentLen = 2}) {
     print('🔧 Generating $gridSize x $gridSize grid with $colorCount colors using Hamiltonian path segmentation');
     
     // Step 1: Build a Hamiltonian snake path over the whole grid
@@ -165,7 +165,7 @@ class LevelData {
     
     // Step 3: Create continuous segments by finding optimal cutting points
     final totalCells = gridSize * gridSize;
-    final segments = _createContinuousSegments(transformedOrder, colorCount, random);
+    final segments = _createContinuousSegments(transformedOrder, colorCount, random, minSegmentLen: minSegmentLen);
     
     // Step 4: Extract endpoints from each segment
     final grid = List.generate(gridSize, (y) => List.generate(gridSize, (x) => null as int?));
@@ -214,7 +214,7 @@ class LevelData {
   }
   
   // Create continuous segments by finding optimal cutting points in the snake path
-  static List<List<Pos>> _createContinuousSegments(List<Pos> snakePath, int colorCount, Random random) {
+  static List<List<Pos>> _createContinuousSegments(List<Pos> snakePath, int colorCount, Random random, {int minSegmentLen = 2}) {
     final totalCells = snakePath.length;
     
     // Step 1: Cut the path into equal-ish lengths (contiguous slices)
@@ -531,6 +531,17 @@ ${results.join('\n')}
     
     print(summary);
     return summary;
+  }
+
+  // Static method for generating levels
+  static List<List<int?>> generateLevel({
+    required int gridSize,
+    required int colorCount,
+    required int seed,
+    int minSegmentLen = 2,
+  }) {
+    final rng = Random(seed);
+    return _generateHamiltonianSegmentationGrid(gridSize, colorCount, rng, minSegmentLen: minSegmentLen);
   }
 }
 

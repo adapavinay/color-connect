@@ -22,12 +22,12 @@ class PuzzleGrid extends Component with HasGameRef {
   static const double borderWidth = 2.0;
   
   double get cellSize {
-    // Reduce cell size for larger grids to keep game area manageable
-    if (gridSize <= 3) return baseCellSize;
-    if (gridSize <= 4) return baseCellSize * 0.8; // 64px
-    if (gridSize <= 5) return baseCellSize * 0.6; // 48px
-    if (gridSize <= 6) return baseCellSize * 0.5; // 40px
-    return baseCellSize * 0.4; // 32px for very large grids
+    final w = gameRef.size.x;
+    final h = gameRef.size.y;
+    const padding = 24.0;
+    final available = (w < h ? w : h) - padding * 2;
+    final size = available / gridSize;
+    return size.clamp(28.0, 72.0);
   }
 
   PuzzleGrid({

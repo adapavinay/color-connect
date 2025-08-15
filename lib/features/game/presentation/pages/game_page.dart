@@ -4,6 +4,7 @@ import 'package:color_connect/core/theme/app_theme.dart';
 import 'package:color_connect/features/game/domain/entities/color_connect_game.dart';
 import 'package:color_connect/features/game/domain/entities/puzzle_grid.dart';
 import 'package:color_connect/features/game/domain/entities/level_data.dart';
+import 'package:color_connect/features/game/domain/entities/level_schedule.dart';
 import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
 
 class GamePage extends StatefulWidget {
@@ -57,7 +58,8 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final gridSize = LevelData.getGridSize(widget.levelId);
+    final cfg = configForLevel(widget.levelId);
+    final gridSize = cfg.grid;
     final levelName = 'Level ${widget.levelId}';
     
     return Scaffold(
@@ -98,30 +100,23 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Builder(
-                  builder: (context) {
-                    final width = _getGameWidth();
-                    final height = _getGameHeight();
-                    return Container(
-                      width: width,
-                      height: height,
-                      child: GestureDetector(
-                        onPanStart: (details) {
-                          // Start the path when pan begins
-                          _handleGameTap(details.localPosition);
-                        },
-                        onPanUpdate: (details) {
-                          // Continue the path as user drags
-                          _handleGameDrag(details.localPosition);
-                        },
-                        onPanEnd: (details) {
-                          // Complete the path
-                          _handleGameDragEnd(details.localPosition);
-                        },
-                        child: GameWidget<ColorConnectGame>(game: _game),
-                      ),
-                    );
-                  },
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: GestureDetector(
+                    onPanStart: (details) {
+                      // Start the path when pan begins
+                      _handleGameTap(details.localPosition);
+                    },
+                    onPanUpdate: (details) {
+                      // Continue the path as user drags
+                      _handleGameDrag(details.localPosition);
+                    },
+                    onPanEnd: (details) {
+                      // Complete the path
+                      _handleGameDragEnd(details.localPosition);
+                    },
+                    child: GameWidget<ColorConnectGame>(game: _game),
+                  ),
                 ),
               ),
             ),
@@ -349,13 +344,15 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   }
 
   double _getGameWidth() {
-    final gridSize = LevelData.getGridSize(widget.levelId);
+    final cfg = configForLevel(widget.levelId);
+    final gridSize = cfg.grid;
     final cellSize = _getCellSize(gridSize);
     return gridSize * cellSize;
   }
 
   double _getGameHeight() {
-    final gridSize = LevelData.getGridSize(widget.levelId);
+    final cfg = configForLevel(widget.levelId);
+    final gridSize = cfg.grid;
     final cellSize = _getCellSize(gridSize);
     return gridSize * cellSize;
   }

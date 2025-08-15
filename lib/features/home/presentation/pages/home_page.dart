@@ -202,7 +202,7 @@ class _HomePageState extends State<HomePage> {
     String text,
     String subtitle,
     IconData icon,
-    dynamic onPressed,
+    VoidCallback onPressed,
   ) {
     return SizedBox(
       width: double.infinity,
@@ -210,13 +210,11 @@ class _HomePageState extends State<HomePage> {
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white.withOpacity(0.95),
+          backgroundColor: Colors.white,
           foregroundColor: AppTheme.primaryColor,
-          elevation: 8,
+          elevation: 6,
           shadowColor: Colors.black26,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           padding: const EdgeInsets.symmetric(horizontal: 16),
         ),
         child: Row(
@@ -225,21 +223,12 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: AppTheme.primaryColor.withOpacity(0.7)),
-                  ),
+                  Text(subtitle, style: TextStyle(fontSize: 12, color: AppTheme.primaryColor.withOpacity(0.7)), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),

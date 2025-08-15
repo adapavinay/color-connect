@@ -1,0 +1,502 @@
+--- lib/features/game/domain/entities/level_schedule.dart.orig+++ lib/features/game/domain/entities/level_schedule.dart@@ -0,0 +1,32 @@+import 'dart:math';
++import 'package:color_connect/features/game/domain/entities/level_data.dart';
++
++class LevelConfig {
++  final int grid;
++  final int colors;
++  final int minSegmentLen;
++  final double twistiness;
++  final int seed;
++  const LevelConfig(this.grid, this.colors, this.minSegmentLen, this.twistiness, this.seed);
++}
++
++int _clampInt(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
++double _lerp(double a, double b, double t) => a + (b - a) * t;
++
++LevelConfig configForLevel(int levelIndex) {
++  int grid;
++  int colors;
++  double t;
++  if (levelIndex <= 30)      { grid = 5; colors = (levelIndex <= 15) ? 2 : 3; t = levelIndex / 30.0; }
++  else if (levelIndex <= 80) { grid = 6; colors = 3 + ((levelIndex - 31) ~/ 25); t = (levelIndex - 31) / 49.0; }
++  else if (levelIndex <= 150){ grid = 7; colors = 4 + ((levelIndex - 81) ~/ 35); t = (levelIndex - 81) / 69.0; }
++  else if (levelIndex <= 260){ grid = 8; colors = 5; t = (levelIndex - 151) / 109.0; }
++  else if (levelIndex <= 420){ grid = 9; colors = (levelIndex < 340) ? 5 : 6; t = (levelIndex - 261) / 159.0; }
++  else if (levelIndex <= 800){ grid = 10; colors = 6; t = (levelIndex - 421) / 379.0; }
++  else                       { grid = 10; colors = 6; t = ((levelIndex - 801) % 50) / 50.0; }
++
++  final twist = _lerp(0.10, 0.75, t);
++  final minSeg = (levelIndex < 40) ? 2 : 3;
++  final seed = ColorConnectGenerator.hashSeed('S1:$levelIndex');
++  return LevelConfig(_clampInt(grid,5,10), _clampInt(colors,2,6), minSeg, twist, seed);
++}
+--- lib/features/game/presentation/pages/game_page.dart.orig+++ lib/features/game/presentation/pages/game_page.dart@@ -4,6 +4,7 @@ import 'package:color_connect/features/game/domain/entities/color_connect_game.dart';
+ import 'package:color_connect/features/game/domain/entities/puzzle_grid.dart';
+ import 'package:color_connect/features/game/domain/entities/level_data.dart';
++import 'package:color_connect/features/game/domain/entities/level_schedule.dart';
+ import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
+ 
+ class GamePage extends StatefulWidget {
+@@ -57,7 +58,8 @@ 
+   @override
+   Widget build(BuildContext context) {
+-    final gridSize = LevelData.getGridSize(widget.levelId);
++    final cfg = configForLevel(widget.levelId);
++    final gridSize = cfg.grid;
+     final levelName = 'Level ${widget.levelId}';
+     
+     return Scaffold(
+@@ -349,13 +351,15 @@   }
+ 
+   double _getGameWidth() {
+-    final gridSize = LevelData.getGridSize(widget.levelId);
++    final cfg = configForLevel(widget.levelId);
++    final gridSize = cfg.grid;
+     final cellSize = _getCellSize(gridSize);
+     return gridSize * cellSize;
+   }
+ 
+   double _getGameHeight() {
+-    final gridSize = LevelData.getGridSize(widget.levelId);
++    final cfg = configForLevel(widget.levelId);
++    final gridSize = cfg.grid;
+     final cellSize = _getCellSize(gridSize);
+     return gridSize * cellSize;
+   }
+--- lib/features/game/domain/entities/level_data.dart.orig+++ lib/features/game/domain/entities/level_data.dart@@ -151,7 +151,7 @@   }
+   
+   // Generate a grid using Hamiltonian path segmentation - guarantees solvable, non-intersecting, full-fill puzzles
+-  static List<List<int?>> _generateHamiltonianSegmentationGrid(int gridSize, int colorCount, Random random) {
++  static List<List<int?>> _generateHamiltonianSegmentationGrid(int gridSize, int colorCount, Random random, {int minSegmentLen = 2}) {
+     print('🔧 Generating $gridSize x $gridSize grid with $colorCount colors using Hamiltonian path segmentation');
+     
+     // Step 1: Build a Hamiltonian snake path over the whole grid
+@@ -165,7 +165,7 @@     
+     // Step 3: Create continuous segments by finding optimal cutting points
+     final totalCells = gridSize * gridSize;
+-    final segments = _createContinuousSegments(transformedOrder, colorCount, random);
++    final segments = _createContinuousSegments(transformedOrder, colorCount, random, minSegmentLen: minSegmentLen);
+     
+     // Step 4: Extract endpoints from each segment
+     final grid = List.generate(gridSize, (y) => List.generate(gridSize, (x) => null as int?));
+@@ -214,12 +214,12 @@   }
+   
+   // Create continuous segments by finding optimal cutting points in the snake path
+-  static List<List<Pos>> _createContinuousSegments(List<Pos> snakePath, int colorCount, Random random) {
++  static List<List<Pos>> _createContinuousSegments(List<Pos> snakePath, int colorCount, Random random, {int minSegmentLen = 2}) {
+     final totalCells = snakePath.length;
+     
+     // Step 1: Cut the path into equal-ish lengths (contiguous slices)
+     final baseLen = totalCells ~/ colorCount;
+-    final remainder = totalCells % colorCount;
++    while (rem-- > 0) { base[random.nextInt(colorCount)]++; }
+     final lengths = List<int>.generate(
+       colorCount,
+       (i) => baseLen + (i < remainder ? 1 : 0),
+@@ -542,4 +542,14 @@   
+   @override
+   String toString() => '($x,$y)';
++
++static List<List<int?>> generateLevel({
++  required int gridSize,
++  required int colorCount,
++  required int seed,
++  int minSegmentLen = 2,
++}) {
++  final rng = Random(seed);
++  return _generateHamiltonianSegmentationGrid(gridSize, colorCount, rng, minSegmentLen: minSegmentLen);
+ }
++}
+--- lib/features/game/domain/entities/puzzle_grid.dart.orig+++ lib/features/game/domain/entities/puzzle_grid.dart@@ -22,13 +22,14 @@   static const double borderWidth = 2.0;
+   
+   double get cellSize {
+-    // Reduce cell size for larger grids to keep game area manageable
+-    if (gridSize <= 3) return baseCellSize;
+-    if (gridSize <= 4) return baseCellSize * 0.8; // 64px
+-    if (gridSize <= 5) return baseCellSize * 0.6; // 48px
+-    if (gridSize <= 6) return baseCellSize * 0.5; // 40px
+-    return baseCellSize * 0.4; // 32px for very large grids
+-  }
++  final w = gameRef.size.x;
++  final h = gameRef.size.y;
++  const padding = 24.0;
++  final available = (w < h ? w : h) - padding * 2;
++  final size = available / gridSize;
++  return size.clamp(28.0, 72.0);
++}
++
+ 
+   PuzzleGrid({
+     required this.gridSize,
+--- lib/features/game/domain/entities/color_connect_game.dart.orig+++ lib/features/game/domain/entities/color_connect_game.dart@@ -3,6 +3,9 @@ import 'package:color_connect/features/game/domain/entities/path_segment.dart';
+ 
+ class ColorConnectGame extends FlameGame {
++@override
++Color backgroundColor() => const Color(0xFFF7F8FC);
++
+   late PuzzleGrid puzzleGrid;
+   List<PathSegment> currentPath = [];
+   int? currentColor;
+--- lib/features/level_select/presentation/pages/level_select_page.dart.orig+++ lib/features/level_select/presentation/pages/level_select_page.dart@@ -2,6 +2,7 @@ import 'package:color_connect/core/theme/app_theme.dart';
+ import 'package:color_connect/features/game/presentation/pages/game_page.dart';
+ import 'package:color_connect/features/game/domain/entities/level_data.dart';
++import 'package:color_connect/features/game/domain/entities/level_schedule.dart';
+ import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
+ 
+ class LevelSelectPage extends StatefulWidget {
+@@ -37,69 +38,84 @@ 
+   @override
+   Widget build(BuildContext context) {
+-    return Scaffold(
+-      appBar: AppBar(
+-        title: const Text('🎮 Select Level Pack'),
+-        backgroundColor: AppTheme.primaryColor,
+-        foregroundColor: Colors.white,
+-        elevation: 0,
+-        actions: [
+-          Container(
+-            margin: const EdgeInsets.only(right: 16),
+-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+-            decoration: BoxDecoration(
+-              color: Colors.amber,
+-              borderRadius: BorderRadius.circular(20),
+-            ),
+-            child: Row(
+-              mainAxisSize: MainAxisSize.min,
+-              children: [
+-                const Icon(Icons.star, color: Colors.white, size: 20),
+-                const SizedBox(width: 4),
+-                Text(
+-                  '${_progressManager.totalStars}',
+-                  style: const TextStyle(
+-                    color: Colors.white,
+-                    fontWeight: FontWeight.bold,
+-                    fontSize: 16,
++  final pm = _progressManager;
++  final totalLevels = LevelData.totalLevels;
++  final nextUnsolved = pm.getNextUnsolvedLevel(1) ?? 1;
++  final controller = TextEditingController();
++
++  return Scaffold(
++    appBar: AppBar(
++      title: const Text('Levels'),
++      backgroundColor: AppTheme.primaryColor,
++      foregroundColor: Colors.white,
++      elevation: 0,
++    ),
++    body: Column(
++      children: [
++        Padding(
++          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
++          child: Row(
++            children: [
++              Expanded(
++                child: TextField(
++                  controller: controller,
++                  keyboardType: TextInputType.number,
++                  decoration: const InputDecoration(
++                    labelText: 'Jump to level…',
++                    border: OutlineInputBorder(),
+                   ),
+-                ),
+-              ],
+-            ),
+-          ),
+-        ],
+-      ),
+-      body: Container(
+-        decoration: BoxDecoration(
+-          gradient: LinearGradient(
+-            begin: Alignment.topCenter,
+-            end: Alignment.bottomCenter,
+-            colors: [
+-              AppTheme.primaryColor,
+-              AppTheme.primaryColor.withOpacity(0.8),
+-              AppTheme.secondaryColor,
++                  onSubmitted: (v) {
++                    final n = int.tryParse(v) ?? 0;
++                    if (n >= 1 && n <= totalLevels) {
++                      _startLevel(context, n);
++                    }
++                  },
++                ),
++              ),
++              const SizedBox(width: 8),
++              ElevatedButton.icon(
++                onPressed: () => _startLevel(context, nextUnsolved),
++                icon: const Icon(Icons.play_arrow),
++                label: const Text('Next'),
++                style: ElevatedButton.styleFrom(
++                  backgroundColor: AppTheme.primaryColor,
++                  foregroundColor: Colors.white,
++                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
++                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
++                ),
++              ),
+             ],
+           ),
+         ),
+-        child: _isLoading
+-            ? const Center(child: CircularProgressIndicator(color: Colors.white))
+-            : SafeArea(
+-                child: Padding(
+-                  padding: const EdgeInsets.all(16.0),
+-                  child: Column(
+-                    children: [
+-                      // Progress Summary
+-                      _buildProgressSummary(),
+-                      const SizedBox(height: 24),
+-                      
+-                      // Packs List
+-                      Expanded(
+-                        child: ListView.builder(
+-                          itemCount: _packsProgress.length,
+-                          itemBuilder: (context, index) {
+-                            final pack = _packsProgress[index];
+-                            return _buildPackCard(context, pack);
+-                          },
++        Expanded(
++          child: ListView.builder(
++            itemCount: totalLevels,
++            itemBuilder: (context, i) {
++              final id = i + 1;
++              final completed = pm.isLevelCompleted(id);
++              final stars = pm.getLevelStars(id);
++              final cfg = configForLevel(id);
++              return ListTile(
++                onTap: () => _startLevel(context, id),
++                leading: CircleAvatar(
++                  backgroundColor: completed ? Colors.green : AppTheme.primaryColor.withOpacity(0.15),
++                  foregroundColor: completed ? Colors.white : AppTheme.primaryColor,
++                  child: Text('$id'),
++                ),
++                title: Text('Level $id · ${cfg.grid}×${cfg.colors}'),
++                subtitle: stars > 0
++                  ? Row(children: List.generate(3, (s) => Icon(s < stars ? Icons.star : Icons.star_border, size: 16, color: Colors.amber)))
++                  : const Text('Not completed'),
++                trailing: const Icon(Icons.chevron_right),
++              );
++            },
++          ),
++        ),
++      ],
++    ),
++  );
++}
++,
+                         ),
+                       ),
+                     ],
+@@ -363,40 +379,84 @@ 
+   @override
+   Widget build(BuildContext context) {
+-    return Scaffold(
+-      appBar: AppBar(
+-        title: Text('$_packName Pack'),
+-        backgroundColor: AppTheme.primaryColor,
+-        foregroundColor: Colors.white,
+-        elevation: 0,
+-      ),
+-      body: Container(
+-        decoration: BoxDecoration(
+-          gradient: LinearGradient(
+-            begin: Alignment.topCenter,
+-            end: Alignment.bottomCenter,
+-            colors: [
+-              AppTheme.primaryColor,
+-              AppTheme.primaryColor.withOpacity(0.8),
+-              AppTheme.secondaryColor,
++  final pm = _progressManager;
++  final totalLevels = LevelData.totalLevels;
++  final nextUnsolved = pm.getNextUnsolvedLevel(1) ?? 1;
++  final controller = TextEditingController();
++
++  return Scaffold(
++    appBar: AppBar(
++      title: const Text('Levels'),
++      backgroundColor: AppTheme.primaryColor,
++      foregroundColor: Colors.white,
++      elevation: 0,
++    ),
++    body: Column(
++      children: [
++        Padding(
++          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
++          child: Row(
++            children: [
++              Expanded(
++                child: TextField(
++                  controller: controller,
++                  keyboardType: TextInputType.number,
++                  decoration: const InputDecoration(
++                    labelText: 'Jump to level…',
++                    border: OutlineInputBorder(),
++                  ),
++                  onSubmitted: (v) {
++                    final n = int.tryParse(v) ?? 0;
++                    if (n >= 1 && n <= totalLevels) {
++                      _startLevel(context, n);
++                    }
++                  },
++                ),
++              ),
++              const SizedBox(width: 8),
++              ElevatedButton.icon(
++                onPressed: () => _startLevel(context, nextUnsolved),
++                icon: const Icon(Icons.play_arrow),
++                label: const Text('Next'),
++                style: ElevatedButton.styleFrom(
++                  backgroundColor: AppTheme.primaryColor,
++                  foregroundColor: Colors.white,
++                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
++                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
++                ),
++              ),
+             ],
+           ),
+         ),
+-        child: SafeArea(
+-          child: Padding(
+-            padding: const EdgeInsets.all(16.0),
+-            child: GridView.builder(
+-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+-                crossAxisCount: 4,
+-                crossAxisSpacing: 16,
+-                mainAxisSpacing: 16,
+-                childAspectRatio: 1,
+-              ),
+-              itemCount: _levelsInPack.length,
+-              itemBuilder: (context, index) {
+-                final levelId = _levelsInPack[index];
+-                return _buildLevelButton(context, levelId);
+-              },
++        Expanded(
++          child: ListView.builder(
++            itemCount: totalLevels,
++            itemBuilder: (context, i) {
++              final id = i + 1;
++              final completed = pm.isLevelCompleted(id);
++              final stars = pm.getLevelStars(id);
++              final cfg = configForLevel(id);
++              return ListTile(
++                onTap: () => _startLevel(context, id),
++                leading: CircleAvatar(
++                  backgroundColor: completed ? Colors.green : AppTheme.primaryColor.withOpacity(0.15),
++                  foregroundColor: completed ? Colors.white : AppTheme.primaryColor,
++                  child: Text('$id'),
++                ),
++                title: Text('Level $id · ${cfg.grid}×${cfg.colors}'),
++                subtitle: stars > 0
++                  ? Row(children: List.generate(3, (s) => Icon(s < stars ? Icons.star : Icons.star_border, size: 16, color: Colors.amber)))
++                  : const Text('Not completed'),
++                trailing: const Icon(Icons.chevron_right),
++              );
++            },
++          ),
++        ),
++      ],
++    ),
++  );
++}
++,
+             ),
+           ),
+         ),
+--- lib/features/home/presentation/pages/home_page.dart.orig+++ lib/features/home/presentation/pages/home_page.dart@@ -197,58 +197,48 @@     );
+   }
+ 
+-  Widget _buildActionButton(
+-    BuildContext context,
+-    String text,
+-    String subtitle,
+-    IconData icon,
+-    dynamic onPressed,
+-  ) {
+-    return SizedBox(
+-      width: double.infinity,
+-      height: 64,
+-      child: ElevatedButton(
+-        onPressed: onPressed,
+-        style: ElevatedButton.styleFrom(
+-          backgroundColor: Colors.white.withOpacity(0.95),
+-          foregroundColor: AppTheme.primaryColor,
+-          elevation: 8,
+-          shadowColor: Colors.black26,
+-          shape: RoundedRectangleBorder(
+-            borderRadius: BorderRadius.circular(16),
+-          ),
+-          padding: const EdgeInsets.symmetric(horizontal: 16),
+-        ),
+-        child: Row(
+-          children: [
+-            Icon(icon, size: 24),
+-            const SizedBox(width: 12),
+-            Expanded(
+-              child: Column(
+-                mainAxisAlignment: MainAxisAlignment.center,
+-                crossAxisAlignment: CrossAxisAlignment.start,
+-                mainAxisSize: MainAxisSize.min,
+-                children: [
+-                  Text(text,
+-                    maxLines: 1,
+-                    overflow: TextOverflow.ellipsis,
+-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+-                  ),
+-                  const SizedBox(height: 2),
+-                  Text(subtitle,
+-                    maxLines: 1,
+-                    overflow: TextOverflow.ellipsis,
+-                    style: TextStyle(fontSize: 12, color: AppTheme.primaryColor.withOpacity(0.7)),
+-                  ),
+-                ],
+-              ),
++  Widget Widget _buildActionButton(
++  BuildContext context,
++  String text,
++  String subtitle,
++  IconData icon,
++  VoidCallback onPressed,
++) {
++  return SizedBox(
++    width: double.infinity,
++    height: 64,
++    child: ElevatedButton(
++      onPressed: onPressed,
++      style: ElevatedButton.styleFrom(
++        backgroundColor: Colors.white,
++        foregroundColor: AppTheme.primaryColor,
++        elevation: 6,
++        shadowColor: Colors.black26,
++        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
++        padding: const EdgeInsets.symmetric(horizontal: 16),
++      ),
++      child: Row(
++        children: [
++          Icon(icon, size: 24),
++          const SizedBox(width: 12),
++          Expanded(
++            child: Column(
++              mainAxisSize: MainAxisSize.min,
++              crossAxisAlignment: CrossAxisAlignment.start,
++              children: [
++                Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
++                const SizedBox(height: 2),
++                Text(subtitle, style: TextStyle(fontSize: 12, color: AppTheme.primaryColor.withOpacity(0.7)), maxLines: 1, overflow: TextOverflow.ellipsis),
++              ],
+             ),
+-            const Icon(Icons.chevron_right),
+-          ],
+-        ),
++          ),
++          const Icon(Icons.chevron_right),
++        ],
+       ),
+-    );
+-  }
++    ),
++  );
++}
++
+ 
+   Widget _buildProgressItem(String title, String value, Color color) {
+     return Column(
