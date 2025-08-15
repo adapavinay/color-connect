@@ -1,5 +1,4 @@
 import 'package:flame/game.dart';
-import 'package:flame/components.dart';
 import 'package:color_connect/features/game/domain/entities/puzzle_grid.dart';
 import 'package:color_connect/features/game/domain/entities/path_segment.dart';
 
@@ -189,8 +188,27 @@ class ColorConnectGame extends FlameGame {
     // Store path length before clearing
     final pathLength = currentPath.length;
     
-    // Add the completed path to the grid
-    puzzleGrid.addCompletedPath(currentPath);
+    // Clean up the path - remove any redundant single-cell segments
+    final cleanedPath = <PathSegment>[];
+    for (final segment in currentPath) {
+      // Only add segments that actually represent movement
+      if (segment.start != segment.end) {
+        cleanedPath.add(segment);
+      }
+    }
+    
+    // If we have a single-cell path (start == end), create a minimal path
+    if (cleanedPath.isEmpty && currentPath.isNotEmpty) {
+      final firstSegment = currentPath.first;
+      cleanedPath.add(PathSegment(
+        start: firstSegment.start,
+        end: firstSegment.start, // Same point for single-cell paths
+        color: firstSegment.color,
+      ));
+    }
+    
+    // Add the cleaned completed path to the grid
+    puzzleGrid.addCompletedPath(cleanedPath.isNotEmpty ? cleanedPath : currentPath);
     
     // Reset current path
     currentPath.clear();

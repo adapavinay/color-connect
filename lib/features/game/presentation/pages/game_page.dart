@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
-import 'package:flame/components.dart';
 import 'package:color_connect/core/theme/app_theme.dart';
-import 'package:color_connect/features/level_select/domain/entities/level.dart';
 import 'package:color_connect/features/game/domain/entities/color_connect_game.dart';
 import 'package:color_connect/features/game/domain/entities/level_data.dart';
+import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
 
 class GamePage extends StatefulWidget {
-  final Level level;
+  final int levelId;
 
   const GamePage({
     super.key,
-    required this.level,
+    required this.levelId,
   });
 
   @override
@@ -29,8 +28,8 @@ class _GamePageState extends State<GamePage> {
     super.initState();
     // Create the game instance once
     _game = ColorConnectGame(
-      gridSize: LevelData.getGridSize(widget.level.id - 1),
-      levelData: LevelData.getLevel(widget.level.id - 1),
+      gridSize: LevelData.getGridSize(widget.levelId),
+      levelData: LevelData.getLevelData(widget.levelId),
       onLevelComplete: (completed) {
         if (completed) {
           _showLevelCompleteDialog();
@@ -47,13 +46,12 @@ class _GamePageState extends State<GamePage> {
 
   @override
   Widget build(BuildContext context) {
-    final levelIndex = widget.level.id - 1;
-    final gridSize = LevelData.getGridSize(widget.level.id - 1);
-    final levelData = LevelData.getLevel(widget.level.id - 1);
+    final gridSize = LevelData.getGridSize(widget.levelId);
+    final levelName = 'Level ${widget.levelId}';
     
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.level.name),
+        title: Text(levelName),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         actions: [
@@ -74,49 +72,49 @@ class _GamePageState extends State<GamePage> {
               children: [
                 _buildStatItem('Moves', _moves.toString(), Icons.touch_app),
                 _buildStatItem('Hints', _hints.toString(), Icons.lightbulb),
-                _buildStatItem('Grid', '${widget.level.gridSize}x${widget.level.gridSize}', Icons.grid_on),
+                _buildStatItem('Grid', '${gridSize}x${gridSize}', Icons.grid_on),
               ],
             ),
           ),
           
-                     // Game Canvas with Flame Engine
-           Expanded(
-             child: Container(
-               margin: const EdgeInsets.all(16.0),
-               decoration: BoxDecoration(
-                 border: Border.all(color: AppTheme.primaryColor, width: 2),
-                 borderRadius: BorderRadius.circular(12),
-               ),
-                              child: ClipRRect(
-                 borderRadius: BorderRadius.circular(10),
-                 child: Builder(
-                   builder: (context) {
-                     final width = _getGameWidth();
-                     final height = _getGameHeight();
-                     return Container(
-                       width: width,
-                       height: height,
-                       child: GestureDetector(
-                     onPanStart: (details) {
-                       // Start the path when pan begins
-                       _handleGameTap(details.localPosition);
-                     },
-                     onPanUpdate: (details) {
-                       // Continue the path as user drags
-                       _handleGameDrag(details.localPosition);
-                     },
-                     onPanEnd: (details) {
-                       // Complete the path
-                       _handleGameDragEnd(details.localPosition);
-                     },
-                     child: GameWidget<ColorConnectGame>(game: _game!),
-                       ),
-                     );
-                   },
-                 ),
-               ),
-             ),
-           ),
+          // Game Canvas with Flame Engine
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.all(16.0),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.primaryColor, width: 2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Builder(
+                  builder: (context) {
+                    final width = _getGameWidth();
+                    final height = _getGameHeight();
+                    return Container(
+                      width: width,
+                      height: height,
+                      child: GestureDetector(
+                        onPanStart: (details) {
+                          // Start the path when pan begins
+                          _handleGameTap(details.localPosition);
+                        },
+                        onPanUpdate: (details) {
+                          // Continue the path as user drags
+                          _handleGameDrag(details.localPosition);
+                        },
+                        onPanEnd: (details) {
+                          // Complete the path
+                          _handleGameDragEnd(details.localPosition);
+                        },
+                        child: GameWidget<ColorConnectGame>(game: _game!),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
           
           // Game Controls
           Container(
@@ -233,11 +231,9 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _undoMove() {
-    if (_moves > 0) {
-      setState(() {
-        _moves--;
-      });
-      // TODO: Implement actual undo logic
+    if (_game != null) {
+      _game!.undoLastMove();
+      // The game will call onMoveCount with the updated move count
     }
   }
 
@@ -271,14 +267,31 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _useHint() {
-    if (_hints > 0) {
+    if (_hints > 0 && _game != null) {
       setState(() {
         _hints--;
       });
-      // TODO: Implement actual hint logic
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hint used!')),
-      );
+      
+      // Get the puzzle grid and find the next best move
+      final puzzleGrid = _game!.puzzleGrid;
+      final hint = puzzleGrid.getHint();
+      
+      if (hint != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Hint: Connect ${hint['color']} from ${hint['from']} to ${hint['to']}'),
+            backgroundColor: AppTheme.primaryColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No hint available for this puzzle'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
 
@@ -337,28 +350,31 @@ class _GamePageState extends State<GamePage> {
   }
 
   double _getGameWidth() {
-    final gridSize = LevelData.getGridSize(widget.level.id - 1);
+    final gridSize = LevelData.getGridSize(widget.levelId);
     final cellSize = _getCellSize(gridSize);
     return gridSize * cellSize;
   }
 
   double _getGameHeight() {
-    final gridSize = LevelData.getGridSize(widget.level.id - 1);
+    final gridSize = LevelData.getGridSize(widget.levelId);
     final cellSize = _getCellSize(gridSize);
     return gridSize * cellSize;
   }
 
   void _showLevelCompleteDialog() {
-    final levelIndex = widget.level.id - 1;
+    final levelIndex = widget.levelId;
     final optimalMoves = LevelData.getOptimalMoves(levelIndex);
-    final stars = LevelData.calculateStars(levelIndex, _moves);
-    final isLastLevel = widget.level.id >= 10;
+    final stars = LevelData.calculateStars(_moves, optimalMoves);
+    final isLastLevel = widget.levelId >= LevelData.totalLevels;
+    
+    // Save progress
+    _saveLevelProgress(stars);
     
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Text('🎉 Level ${widget.level.id} Complete!'),
+        title: Text('🎉 Level ${widget.levelId} Complete!'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -420,7 +436,7 @@ class _GamePageState extends State<GamePage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Level ${widget.level.id + 1}: ${LevelData.getGridSize(widget.level.id)}x${LevelData.getGridSize(widget.level.id)} grid, ${LevelData.getColorCount(widget.level.id)} colors',
+                      'Level ${widget.levelId + 1}: ${LevelData.getGridSize(widget.levelId + 1)}x${LevelData.getGridSize(widget.levelId + 1)} grid, ${LevelData.getColorCount(widget.levelId + 1)} colors',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.primaryColor,
                       ),
@@ -466,17 +482,17 @@ class _GamePageState extends State<GamePage> {
                       foregroundColor: AppTheme.primaryColor,
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
-                                      child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.list, size: 16),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Back to Stages',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ],
-                  ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.list, size: 16),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Back to Stages',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 
@@ -501,19 +517,19 @@ class _GamePageState extends State<GamePage> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     ),
-                                      child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        isLastLevel ? 'Back to Menu' : 'Next Level',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      if (!isLastLevel) ...[
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward, size: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          isLastLevel ? 'Back to Menu' : 'Next Level',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        if (!isLastLevel) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_forward, size: 16),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
                   ),
                 ),
               ],
@@ -538,27 +554,32 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _navigateToNextLevel() {
-    final currentLevelId = widget.level.id;
-    final nextLevelIndex = currentLevelId; // Next level data index
+    final currentLevelId = widget.levelId;
+    final nextLevelId = currentLevelId + 1;
     
-    final nextLevel = Level(
-      id: currentLevelId + 1,
-      name: 'Level ${currentLevelId + 1}',
-      gridSize: LevelData.getGridSize(nextLevelIndex),
-      colors: LevelData.getColorCount(nextLevelIndex),
-      isCompleted: false,
-      isUnlocked: true,
-      stars: 0,
-      optimalMoves: LevelData.getOptimalMoves(nextLevelIndex),
-      bestMoves: null,
-    );
-    
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GamePage(level: nextLevel),
-      ),
-    );
+    // Check if next level exists
+    if (nextLevelId <= LevelData.totalLevels) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GamePage(levelId: nextLevelId),
+        ),
+      );
+    } else {
+      // This was the last level, go back to menu
+      Navigator.pop(context);
+    }
+  }
+
+  void _saveLevelProgress(int stars) async {
+    try {
+      final progressManager = ProgressManager();
+      await progressManager.initialize();
+      await progressManager.completeLevel(widget.levelId, stars);
+      print('✅ Progress saved: Level ${widget.levelId} completed with $stars stars');
+    } catch (e) {
+      print('❌ Error saving progress: $e');
+    }
   }
 
   Color _getRatingColor(int stars) {

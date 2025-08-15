@@ -226,6 +226,7 @@ class PuzzleGrid extends Component with HasGameRef {
     
     // Step 1: Check if all endpoints are connected
     final connectedEndpoints = <String>{};
+    final colorPaths = <int, List<List<int>>>{};
     
     for (final path in completedPaths) {
       if (path.isNotEmpty) {
@@ -239,17 +240,29 @@ class PuzzleGrid extends Component with HasGameRef {
         connectedEndpoints.add(startKey);
         connectedEndpoints.add(endKey);
         
+        // Group paths by color
+        if (!colorPaths.containsKey(color)) {
+          colorPaths[color] = [];
+        }
+        colorPaths[color]!.add([
+          start.x.toInt(), start.y.toInt(),
+          end.x.toInt(), end.y.toInt()
+        ]);
+        
         print('🔍 Path connects: $startKey -> $endKey');
       }
     }
     
     // Count total endpoints
     int totalEndpoints = 0;
+    final endpointColors = <int, int>{};
     for (int y = 0; y < gridSize; y++) {
       for (int x = 0; x < gridSize; x++) {
         if (levelData[y][x] != null) {
           totalEndpoints++;
-          print('🔍 Found endpoint at [$x,$y] with color ${levelData[y][x]}');
+          final color = levelData[y][x]!;
+          endpointColors[color] = (endpointColors[color] ?? 0) + 1;
+          print('🔍 Found endpoint at [$x,$y] with color $color');
         }
       }
     }
@@ -262,8 +275,18 @@ class PuzzleGrid extends Component with HasGameRef {
       return false;
     }
     
-    // Step 2: Check for path overlaps (simplified)
+    // Step 2: Validate that each color has exactly one path
+    for (final color in endpointColors.keys) {
+      final pathsForColor = colorPaths[color] ?? [];
+      if (pathsForColor.length != 1) {
+        print('❌ Color $color has ${pathsForColor.length} paths, need exactly 1');
+        return false;
+      }
+    }
+    
+    // Step 3: Check for path overlaps (more strict validation)
     final occupiedCells = <String>{};
+    final pathSegments = <String>{};
     
     for (final path in completedPaths) {
       if (path.isNotEmpty) {
@@ -272,22 +295,62 @@ class PuzzleGrid extends Component with HasGameRef {
         final startKey = '${start.x.toInt()},${start.y.toInt()}';
         occupiedCells.add(startKey);
         
-        // Add all path segments
+        // Add all path segments and check for overlaps
         for (final segment in path) {
           final endKey = '${segment.end.x.toInt()},${segment.end.y.toInt()}';
+          
+          // Skip if this is a single-cell path (start == end)
+          if (segment.start == segment.end) {
+            continue; // Single-cell paths don't create overlaps
+          }
+          
+          // Check if this cell is already occupied by another path
+          // But allow endpoints to be shared (they're valid overlaps)
+          if (occupiedCells.contains(endKey)) {
+            // Check if this is an endpoint - endpoints can be shared
+            final coords = endKey.split(',');
+            final endX = int.parse(coords[0]);
+            final endY = int.parse(coords[1]);
+            final isEndpoint = levelData[endY][endX] != null;
+            if (!isEndpoint) {
+              print('❌ Path overlap detected at cell $endKey');
+              return false;
+            }
+          }
+          
           occupiedCells.add(endKey);
+          
+          // Check for segment overlaps (if start and end are the same)
+          final segmentKey = '${segment.start.x.toInt()},${segment.start.y.toInt()}-${segment.end.x.toInt()},${segment.end.y.toInt()}';
+          if (pathSegments.contains(segmentKey)) {
+            print('❌ Duplicate segment detected: $segmentKey');
+            return false;
+          }
+          pathSegments.add(segmentKey);
         }
       }
     }
     
-    // Check for overlaps by comparing set size with total cells
-    final uniqueCells = occupiedCells.toSet();
-    if (uniqueCells.length != occupiedCells.length) {
-      print('❌ Path overlaps detected: ${occupiedCells.length} cells with ${uniqueCells.length} unique');
-      return false;
+    // Step 4: Validate path continuity (each path should be continuous)
+    for (final path in completedPaths) {
+      if (path.isNotEmpty && path.length > 1) {
+        for (int i = 0; i < path.length - 1; i++) {
+          final current = path[i];
+          final next = path[i + 1];
+          
+          // Check if segments are adjacent
+          final dx = (next.start.x - current.end.x).abs();
+          final dy = (next.start.y - current.end.y).abs();
+          
+          if (dx > 1 || dy > 1 || (dx == 1 && dy == 1)) {
+            print('❌ Path discontinuity detected: ${current.end} -> ${next.start}');
+            return false;
+          }
+        }
+      }
     }
     
-    print('✅ Level complete! All endpoints connected, no overlaps');
+    print('✅ Level complete! All endpoints connected, no overlaps, valid paths');
     return true;
   }
 
@@ -306,5 +369,69 @@ class PuzzleGrid extends Component with HasGameRef {
       }
       // markNeedsPaint(); // Not needed in current Flame version
     }
+  }
+
+  Map<String, dynamic>? getHint() {
+    // Find unconnected endpoints
+    final unconnectedEndpoints = <Map<String, dynamic>>[];
+    
+    for (int y = 0; y < gridSize; y++) {
+      for (int x = 0; x < gridSize; x++) {
+        if (levelData[y][x] != null && levelData[y][x]! >= 0) {
+          final color = levelData[y][x]!;
+          final isConnected = _isEndpointConnected(x, y, color);
+          
+          if (!isConnected) {
+            unconnectedEndpoints.add({
+              'x': x,
+              'y': y,
+              'color': color,
+            });
+          }
+        }
+      }
+    }
+    
+    if (unconnectedEndpoints.isEmpty) {
+      return null;
+    }
+    
+    // Find a pair of unconnected endpoints of the same color
+    for (int i = 0; i < unconnectedEndpoints.length; i++) {
+      for (int j = i + 1; j < unconnectedEndpoints.length; j++) {
+        if (unconnectedEndpoints[i]['color'] == unconnectedEndpoints[j]['color']) {
+          return {
+            'color': _getColorName(unconnectedEndpoints[i]['color']),
+            'from': '[${unconnectedEndpoints[i]['x']},${unconnectedEndpoints[i]['y']}]',
+            'to': '[${unconnectedEndpoints[j]['x']},${unconnectedEndpoints[j]['y']}]',
+          };
+        }
+      }
+    }
+    
+    return null;
+  }
+  
+  bool _isEndpointConnected(int x, int y, int color) {
+    for (final path in completedPaths) {
+      if (path.isNotEmpty) {
+        final pathColor = path.first.color;
+        if (pathColor == color) {
+          final start = path.first.start;
+          final end = path.last.end;
+          
+          if ((start.x.toInt() == x && start.y.toInt() == y) ||
+              (end.x.toInt() == x && end.y.toInt() == y)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+  
+  String _getColorName(int colorIndex) {
+    final colors = ['Red', 'Blue', 'Green', 'Yellow', 'Purple', 'Orange'];
+    return colors[colorIndex % colors.length];
   }
 }
