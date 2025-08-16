@@ -13,20 +13,37 @@ class LevelConfig {
 int _clampInt(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
 double _lerp(double a, double b, double t) => a + (b - a) * t;
 
-LevelConfig configForLevel(int levelIndex) {
-  int grid;
-  int colors;
-  double t;
-  if (levelIndex <= 30)      { grid = 5; colors = (levelIndex <= 15) ? 2 : 3; t = levelIndex / 30.0; }
-  else if (levelIndex <= 80) { grid = 6; colors = 3 + ((levelIndex - 31) ~/ 25); t = (levelIndex - 31) / 49.0; }
-  else if (levelIndex <= 150){ grid = 7; colors = 4 + ((levelIndex - 81) ~/ 35); t = (levelIndex - 81) / 69.0; }
-  else if (levelIndex <= 260){ grid = 8; colors = 5; t = (levelIndex - 151) / 109.0; }
-  else if (levelIndex <= 420){ grid = 9; colors = (levelIndex < 340) ? 5 : 6; t = (levelIndex - 261) / 159.0; }
-  else if (levelIndex <= 800){ grid = 10; colors = 6; t = (levelIndex - 421) / 379.0; }
-  else                       { grid = 10; colors = 6; t = ((levelIndex - 801) % 50) / 50.0; }
+LevelConfig configForLevel(int i) {
+  // Levels 1-3: 3x3 grids (simple tutorial)
+  if (i <= 3) return LevelConfig(3, 3, 2, 0.1, LevelData.hashSeed('S1:$i'));
+  
+  // Levels 4-20: 4x4 grids
+  if (i <= 20) return LevelConfig(4, 3, 2, 0.15, LevelData.hashSeed('S1:$i'));
+  
+  // Levels 21-60: 5x5 grids
+  if (i <= 60) return LevelConfig(5, 4, 2, 0.2, LevelData.hashSeed('S1:$i'));
+  
+  // Levels 61-100: 6x6 grids
+  if (i <= 100) return LevelConfig(6, 4, 2, 0.25, LevelData.hashSeed('S1:$i'));
+  
+  // Levels 101-160: 7x7 grids
+  if (i <= 160) return LevelConfig(7, 5, 2, 0.3, LevelData.hashSeed('S1:$i'));
+  
+  // Levels 161-220: 8x8 grids
+  if (i <= 220) return LevelConfig(8, 5, 2, 0.35, LevelData.hashSeed('S1:$i'));
+  
+  // Levels 221-300: 9x9 grids
+  return LevelConfig(9, 6, 2, 0.4, LevelData.hashSeed('S1:$i'));
+}
 
-  final twist = _lerp(0.10, 0.75, t);
-  final minSeg = (levelIndex < 40) ? 2 : 3;
-  final seed = levelIndex.hashCode;
-  return LevelConfig(_clampInt(grid,5,10), _clampInt(colors,2,6), minSeg, twist, seed);
+// Star gating function - progressive unlocking based on grid size bands
+int starsRequiredForLevel(int levelIndex) {
+  if (levelIndex <= 3) return 0;      // 3x3 tutorial levels
+  if (levelIndex <= 20) return 0;     // 4x4 beginner levels
+  if (levelIndex <= 60) return 30;    // 5x5 easy levels
+  if (levelIndex <= 100) return 75;   // 6x6 medium levels
+  if (levelIndex <= 160) return 135;  // 7x7 hard levels
+  if (levelIndex <= 220) return 210;  // 8x8 expert levels
+  if (levelIndex <= 300) return 300;  // 9x9 master levels
+  return 405; // Beyond 300 levels
 }

@@ -78,6 +78,7 @@ class PuzzleGrid extends Component with HasGameRef {
   void render(Canvas canvas) {
     super.render(canvas);
     
+    _drawBoardBackground(canvas);
     // Draw grid borders
     _drawGridBorders(canvas);
     
@@ -90,7 +91,7 @@ class PuzzleGrid extends Component with HasGameRef {
 
   void _drawGridBorders(Canvas canvas) {
     final paint = Paint()
-      ..color = AppTheme.primaryColor.withOpacity(0.3)
+      ..color = CCColors.primary.withOpacity(0.3)
       ..strokeWidth = borderWidth
       ..style = PaintingStyle.stroke;
 
@@ -156,19 +157,19 @@ class PuzzleGrid extends Component with HasGameRef {
   Color _getColorForPath(int colorIndex) {
     switch (colorIndex) {
       case 0:
-        return AppTheme.red;
+        return Colors.red;
       case 1:
-        return AppTheme.blue;
+        return Colors.blue;
       case 2:
-        return AppTheme.green;
+        return Colors.green;
       case 3:
-        return AppTheme.yellow;
+        return Colors.yellow;
       case 4:
-        return AppTheme.purple;
+        return Colors.purple;
       case 5:
-        return AppTheme.orange;
+        return Colors.orange;
       default:
-        return AppTheme.primaryColor;
+        return CCColors.primary;
     }
   }
 
@@ -470,5 +471,14 @@ class PuzzleGrid extends Component with HasGameRef {
   String _getColorName(int colorIndex) {
     final colors = ['Red', 'Blue', 'Green', 'Yellow', 'Purple', 'Orange'];
     return colors[colorIndex % colors.length];
+  }
+
+  void _drawBoardBackground(Canvas canvas) {
+    final boardW = gridSize * cellSize;
+    final boardH = gridSize * cellSize;
+    final rect = Rect.fromLTWH(0, 0, boardW, boardH);
+    final r = RRect.fromRectAndRadius(rect, Radius.circular(cellSize * 0.2));
+    final paint = Paint()..color = CCColors.board;
+    canvas.drawRRect(r, paint);
   }
 }

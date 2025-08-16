@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'package:color_connect/core/theme/app_theme.dart';
@@ -30,39 +31,61 @@ class GridCell extends Component {
       position.y + size / 2,
     );
     
-    // Draw colored circle for endpoint
+    // Draw colored squircle for endpoint using superellipse
     final paint = Paint()
       ..color = _getColorForIndex(color!)
       ..style = PaintingStyle.fill;
     
-    final radius = size * 0.3;
-    canvas.drawCircle(center, radius, paint);
+    final radius = size * 0.25;
+    final path = _createSuperellipsePath(center, radius, 4.0);
+    canvas.drawPath(path, paint);
     
-    // Draw border
+    // Draw white border
     final borderPaint = Paint()
       ..color = Colors.white
-      ..strokeWidth = 3
+      ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
     
-    canvas.drawCircle(center, radius, borderPaint);
+    canvas.drawPath(path, borderPaint);
+  }
+
+  Path _createSuperellipsePath(Offset center, double radius, double n) {
+    const steps = 64;
+    final path = Path();
+    
+    for (int i = 0; i <= steps; i++) {
+      final t = -math.pi + 2 * math.pi * i / steps;
+      final ct = math.cos(t), st = math.sin(t);
+      final x = math.pow(ct.abs(), 2 / n) * radius * (ct >= 0 ? 1 : -1);
+      final y = math.pow(st.abs(), 2 / n) * radius * (st >= 0 ? 1 : -1);
+      final px = center.dx + x, py = center.dy + y;
+      
+      if (i == 0) {
+        path.moveTo(px, py);
+      } else {
+        path.lineTo(px, py);
+      }
+    }
+    path.close();
+    return path;
   }
 
   Color _getColorForIndex(int colorIndex) {
     switch (colorIndex) {
       case 0:
-        return AppTheme.red;
+        return Colors.red;
       case 1:
-        return AppTheme.blue;
+        return Colors.blue;
       case 2:
-        return AppTheme.green;
+        return Colors.green;
       case 3:
-        return AppTheme.yellow;
+        return Colors.yellow;
       case 4:
-        return AppTheme.purple;
+        return Colors.purple;
       case 5:
-        return AppTheme.orange;
+        return Colors.orange;
       default:
-        return AppTheme.primaryColor;
+        return CCColors.primary;
     }
   }
 

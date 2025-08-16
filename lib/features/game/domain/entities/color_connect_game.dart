@@ -2,10 +2,12 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:color_connect/features/game/domain/entities/puzzle_grid.dart';
 import 'package:color_connect/features/game/domain/entities/path_segment.dart';
+import 'package:color_connect/features/game/domain/entities/level_validator.dart';
+import 'package:color_connect/features/game/domain/entities/level_auto_repair.dart';
 
 class ColorConnectGame extends FlameGame {
   @override
-  Color backgroundColor() => const Color(0xFFF7F8FC);
+  Color backgroundColor() => Colors.transparent;
   
   late PuzzleGrid puzzleGrid;
   List<PathSegment> currentPath = [];
@@ -22,8 +24,19 @@ class ColorConnectGame extends FlameGame {
     required this.onLevelComplete,
     required this.onMoveCount,
   }) {
-    print('🎯 ColorConnectGame created with gridSize: $gridSize, levelData: $levelData');
+    final solvable = LevelValidator.isSolvable(levelData);
+    if (!solvable) {
+      print('❌ Provided levelData is UNSOLVABLE. Attempting auto-repair…');
+    }
+    final repaired = LevelAutoRepair.autoRepairIfNeeded(levelData);
+    if (!solvable && LevelValidator.isSolvable(repaired)) {
+      print('🛠️ Auto-repair applied. New levelData: $repaired');
+    }
+    _effectiveLevelData = repaired;
+    print('🎯 ColorConnectGame created with gridSize: $gridSize');
   }
+
+  late final List<List<int?>> _effectiveLevelData;
 
   @override
   Future<void> onLoad() async {
@@ -33,9 +46,12 @@ class ColorConnectGame extends FlameGame {
     // Create and add the puzzle grid
     puzzleGrid = PuzzleGrid(
       gridSize: gridSize,
-      levelData: levelData,
+      levelData: _effectiveLevelData,
       onPathComplete: _onPathComplete,
     );
+    
+    print('🎮 Creating puzzle grid: ${gridSize}x$gridSize');
+    print('📊 Level data (effective): $_effectiveLevelData');
     
     add(puzzleGrid);
   }
@@ -228,6 +244,15 @@ class ColorConnectGame extends FlameGame {
       onLevelComplete(true);
     } else {
       print('❌ Level is not complete yet');
+      // Deferred completion re-check to handle Flame's update ordering
+      // This ensures success dialog appears even if we checked one frame too early
+      Future.microtask(() {
+        final deferredCheck = puzzleGrid.isLevelComplete();
+        if (deferredCheck) {
+          print('🎉 Deferred check: Level is actually complete! Calling onLevelComplete callback');
+          onLevelComplete(true);
+        }
+      });
     }
     
     // Increment move counter by the number of actual moves (segments minus the starting position)

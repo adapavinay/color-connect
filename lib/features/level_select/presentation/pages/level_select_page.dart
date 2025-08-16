@@ -18,19 +18,28 @@ class _LevelSelectPageState extends State<LevelSelectPage> {
   @override
   void initState() {
     super.initState();
+    // Load progress and update UI immediately
+    _loadProgressAndUpdate();
+  }
+  
+  Future<void> _loadProgressAndUpdate() async {
+    await _progressManager.initialize();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final pm = _progressManager;
     final totalLevels = LevelData.totalLevels;
-    final nextUnsolved = pm.getNextUnsolvedLevel(1) ?? 1;
+    final nextPlayable = pm.getNextPlayableLevel(1) ?? 1;
     final controller = TextEditingController();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Levels'),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: CCColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -58,11 +67,11 @@ class _LevelSelectPageState extends State<LevelSelectPage> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  onPressed: () => _startLevel(context, nextUnsolved),
+                  onPressed: () => _startLevel(context, nextPlayable),
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Next'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
+                    backgroundColor: CCColors.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -79,18 +88,30 @@ class _LevelSelectPageState extends State<LevelSelectPage> {
                 final completed = pm.isLevelCompleted(id);
                 final stars = pm.getLevelStars(id);
                 final cfg = configForLevel(id);
+                final requiredStars = starsRequiredForLevel(id);
+                final totalStars = pm.totalStars;
+                final isUnlocked = totalStars >= requiredStars;
+                
                 return ListTile(
-                  onTap: () => _startLevel(context, id),
+                  onTap: isUnlocked ? () => _startLevel(context, id) : null,
                   leading: CircleAvatar(
-                    backgroundColor: completed ? Colors.green : AppTheme.primaryColor.withOpacity(0.15),
-                    foregroundColor: completed ? Colors.white : AppTheme.primaryColor,
-                    child: Text('$id'),
+                    backgroundColor: completed ? Colors.green : 
+                                   isUnlocked ? CCColors.primary.withOpacity(0.15) : Colors.grey,
+                    foregroundColor: completed ? Colors.white : 
+                                   isUnlocked ? CCColors.primary : Colors.grey[600],
+                    child: isUnlocked ? Text('$id') : const Icon(Icons.lock, size: 16),
                   ),
                   title: Text('Level $id · ${cfg.grid}×${cfg.colors}'),
-                  subtitle: stars > 0
-                    ? Row(children: List.generate(3, (s) => Icon(s < stars ? Icons.star : Icons.star_border, size: 16, color: Colors.amber)))
-                    : const Text('Not completed'),
-                  trailing: const Icon(Icons.chevron_right),
+                  subtitle: isUnlocked 
+                    ? (stars > 0
+                        ? Row(children: List.generate(3, (s) => Icon(s < stars ? Icons.star : Icons.star_border, size: 16, color: Colors.amber)))
+                        : const Text('Not completed'))
+                    : Text('Requires $requiredStars★', style: TextStyle(color: Colors.orange)),
+                  trailing: isUnlocked ? const Icon(Icons.chevron_right) : 
+                           IconButton(
+                             icon: const Icon(Icons.star, color: Colors.orange),
+                             onPressed: () => _showGetStarsDialog(context, requiredStars),
+                           ),
                 );
               },
             ),
@@ -108,9 +129,33 @@ class _LevelSelectPageState extends State<LevelSelectPage> {
       ),
     );
     
-    // Refresh the page to show updated progress
+    // Reload progress and refresh the page to show updated progress immediately
     if (mounted) {
+      await _progressManager.initialize();
       setState(() {});
     }
+  }
+
+  void _showGetStarsDialog(BuildContext context, int requiredStars) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Need More Stars'),
+        content: Text('This level requires $requiredStars★ to unlock.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // TODO: Navigate to store or show rewarded ad
+            },
+            child: const Text('Get Stars'),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -1,265 +1,189 @@
 import 'package:flutter/material.dart';
 import 'package:color_connect/core/theme/app_theme.dart';
 import 'package:color_connect/features/level_select/presentation/pages/level_select_page.dart';
-import 'package:color_connect/features/settings/presentation/pages/settings_page.dart';
-import 'package:color_connect/features/store/presentation/pages/star_store_page.dart';
-import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
 
-class HomePage extends StatefulWidget {
+class HomePage extends StatelessWidget {
   const HomePage({super.key});
-
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  late ProgressManager _progressManager;
-  Map<String, dynamic> _progressSummary = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProgress();
-  }
-  
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Remove refresh logic from here - it doesn't fire on pop
-  }
-
-  Future<void> _loadProgress() async {
-    _progressManager = ProgressManager();
-    await _progressManager.initialize();
-    setState(() {
-      _progressSummary = _progressManager.getProgressSummary();
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppTheme.primaryColor,
-              AppTheme.primaryColor.withOpacity(0.8),
-              AppTheme.secondaryColor,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-              child: Column(
-                children: [
-                  // Game Title
-                  const Text(
-                    'Color Connect',
-                    style: TextStyle(
-                      fontSize: 42,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(2, 2),
-                          blurRadius: 4,
-                          color: Colors.black26,
-                        ),
-                      ],
-                    ),
-                    textAlign: TextAlign.center,
+      backgroundColor: Theme.of(context).colorScheme.background,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // App Logo/Title Section
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Connect the colors, solve the puzzle!',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white.withOpacity(0.9),
-                      fontStyle: FontStyle.italic,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Progress Display Section
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.95),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Your Progress',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryColor,
+                  child: Column(
+                    children: [
+                      // App Icon
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              CCColors.primary,
+                              CCColors.secondary,
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _buildProgressItem(
-                              '⭐ Stars',
-                              '${_progressSummary['totalStars'] ?? 0}',
-                              AppTheme.yellow,
-                            ),
-                            _buildProgressItem(
-                              '🎯 Completed',
-                              '${_progressSummary['completedLevels'] ?? 0}/${_progressSummary['totalLevels'] ?? 800}',
-                              AppTheme.blue,
-                            ),
-                            _buildProgressItem(
-                              '📊 Progress',
-                              '${(_progressSummary['completionPercentage'] ?? 0.0).toStringAsFixed(1)}%',
-                              AppTheme.green,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: CCColors.primary.withOpacity(0.3),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 20),
-
-                  // Main Action Buttons
-                  Column(
-                    children: [
-                      _buildActionButton(
-                        context,
-                        '🎮 Play',
-                        'Start your puzzle adventure',
-                        Icons.play_arrow,
-                        () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LevelSelectPage(),
-                            ),
-                          );
-                          if (!mounted) return;
-                          setState(() {
-                            _progressSummary = _progressManager.getProgressSummary(); // total stars, completion %
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      _buildActionButton(
-                        context,
-                        '⭐ Store',
-                        'Get more stars to unlock packs',
-                        Icons.store,
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const StarStorePage(),
-                          ),
+                        child: const Icon(
+                          Icons.extension,
+                          size: 40,
+                          color: Colors.white,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      _buildActionButton(
+                      const SizedBox(height: 24),
+                      
+                      // App Title
+                      Text(
+                        'Color Connect',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: CCColors.text,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // Subtitle
+                      Text(
+                        'Connect the colors, solve the puzzle!',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: CCColors.subt,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const SizedBox(height: 40),
+                
+                // Main Action Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 64,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
                         context,
-                        '⚙️ Settings',
-                        'Customize your experience',
-                        Icons.settings,
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const SettingsPage(),
-                          ),
+                        MaterialPageRoute(
+                          builder: (context) => const LevelSelectPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.play_arrow_rounded, size: 28),
+                    label: const Text(
+                      'Start Playing',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CCColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 8,
+                      shadowColor: CCColors.primary.withOpacity(0.3),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Secondary Action
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      // TODO: Navigate to store when implemented
+                    },
+                    icon: const Icon(Icons.star_rounded, size: 24),
+                    label: const Text(
+                      'Get More Stars',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CCColors.primary,
+                      side: BorderSide(color: CCColors.primary.withOpacity(0.3)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const Spacer(),
+                
+                // Footer Info
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 20,
+                        color: CCColors.subt,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '300 levels to complete',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: CCColors.subt,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
-                  
-                  const SizedBox(height: 20),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildActionButton(
-    BuildContext context,
-    String text,
-    String subtitle,
-    IconData icon,
-    VoidCallback onPressed,
-  ) {
-    return SizedBox(
-      width: double.infinity,
-      height: 64,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.primaryColor,
-          elevation: 6,
-          shadowColor: Colors.black26,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 24),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(fontSize: 12, color: AppTheme.primaryColor.withOpacity(0.7)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressItem(String title, String value, Color color) {
-    return Column(
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 14, // Reduced from 16
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        const SizedBox(height: 6), // Reduced from 8
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 20, // Reduced from 24
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-      ],
     );
   }
 }

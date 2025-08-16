@@ -1,8 +1,9 @@
 import 'dart:math';
+import 'package:color_connect/features/game/domain/entities/puzzle_generator_fresh.dart';
 
 class LevelData {
   // Level progression system
-  static const int totalLevels = 800;
+  static const int totalLevels = 300;
   static const int levelsPerPack = 50;
   static const int packsCount = totalLevels ~/ levelsPerPack;
   
@@ -26,7 +27,7 @@ class LevelData {
     16: 2025,// Pack 16: Need 2025 stars
   };
 
-  // Get level data by level ID (1-800)
+  // Get level data by level ID (1-300)
   static List<List<int?>> getLevelData(int levelId) {
     if (levelId < 1 || levelId > totalLevels) {
       throw ArgumentError('Level ID must be between 1 and $totalLevels');
@@ -144,324 +145,15 @@ class LevelData {
     return max(0, requiredStars - totalStars);
   }
 
-  // Generate a solvable grid using the proven Hamiltonian path segmentation algorithm
+  // Generate a solvable grid using the fresh Hamiltonian snake path generator
   static List<List<int?>> _generateSolvableGrid(int gridSize, int colorCount, Random random) {
-    // Use the mathematically proven Hamiltonian path segmentation approach
-    return _generateHamiltonianSegmentationGrid(gridSize, colorCount, random);
-  }
-  
-  // Generate a grid using Hamiltonian path segmentation - guarantees solvable, non-intersecting, full-fill puzzles
-  static List<List<int?>> _generateHamiltonianSegmentationGrid(int gridSize, int colorCount, Random random, {int minSegmentLen = 2}) {
-    print('🔧 Generating $gridSize x $gridSize grid with $colorCount colors using Hamiltonian path segmentation');
-    
-    // Step 1: Build a Hamiltonian snake path over the whole grid
-    final snakeOrder = _buildSnakeOrder(gridSize);
-    print('🐍 Original snake path: ${snakeOrder.map((p) => '(${p.x},${p.y})').join(' -> ')}');
-    
-    // Step 2: Apply random transformations for variety (deterministic based on seed)
-    // NO ROTATION - only flips/transpose to preserve path continuity
-    final transformedOrder = _applyTransformations(snakeOrder, gridSize, random);
-    print('🔄 Transformed snake path (flips/transpose only): ${transformedOrder.map((p) => '(${p.x},${p.y})').join(' -> ')}');
-    
-    // Step 3: Create continuous segments by finding optimal cutting points
-    final totalCells = gridSize * gridSize;
-    final segments = _createContinuousSegments(transformedOrder, colorCount, random, minSegmentLen: minSegmentLen);
-    
-    // Step 4: Extract endpoints from each segment
-    final grid = List.generate(gridSize, (y) => List.generate(gridSize, (x) => null as int?));
-    final solutionPaths = <List<Pos>>[];
-    
-    for (int color = 0; color < colorCount; color++) {
-      final segment = segments[color];
-      
-      print('🎨 Color $color: segment length ${segment.length}, cells: ${segment.map((p) => '(${p.x},${p.y})').join(' -> ')}');
-      
-      // Place endpoints at the start and end of this segment
-      final start = segment.first;
-      final end = segment.last;
-      
-      grid[start.y][start.x] = color;
-      grid[end.y][end.x] = color;
-      
-      // Store the solution path for validation (hidden from player)
-      solutionPaths.add(segment);
-    }
-    
-    // Add validation asserts to catch coordinate bugs
-    assert(_verifyDisjointCover(transformedOrder, gridSize));
-    assert(_verifySegments(solutionPaths, gridSize));
-    _assertEndpointNeighborsFree(solutionPaths, grid);
-    
-    // Extra guardrail: sanity check that every consecutive pair is Manhattan distance 1
-    _assertPathContinuity(solutionPaths);
-    
-    print('✅ Generated grid with $colorCount colors using Hamiltonian path segmentation');
-    print('🎯 Generated grid:');
-    for (int y = 0; y < gridSize; y++) {
-      String row = '';
-      for (int x = 0; x < gridSize; x++) {
-        final color = grid[y][x];
-        if (color == null) {
-          row += '. ';
-        } else {
-          row += '$color ';
-        }
-      }
-      print('   $row');
-    }
-    
-    return grid;
-  }
-  
-  // Create continuous segments by finding optimal cutting points in the snake path
-  static List<List<Pos>> _createContinuousSegments(List<Pos> snakePath, int colorCount, Random random, {int minSegmentLen = 2}) {
-    final totalCells = snakePath.length;
-    
-    // Step 1: Cut the path into equal-ish lengths (contiguous slices)
-    final baseLen = totalCells ~/ colorCount;
-    final remainder = totalCells % colorCount;
-    final lengths = List<int>.generate(
-      colorCount,
-      (i) => baseLen + (i < remainder ? 1 : 0),
+    // Use the fresh generator - guaranteed solvable with full coverage
+    return PuzzleGeneratorFresh.generate(
+      gridSize: gridSize,
+      colorCount: colorCount,
+      seed: random.nextInt(1000000),
+      minSegmentLen: 2,
     );
-    
-    // Step 2: Cut contiguously (no wrapping - preserves continuity)
-    final segs = <List<Pos>>[];
-    int idx = 0;
-    for (final len in lengths) {
-      segs.add(snakePath.sublist(idx, idx + len));
-      idx += len;
-    }
-    
-    // Step 3: Rotate SEGMENTS (not the path) for variety
-    // This is safe because each segment is still a contiguous slice of the original path
-    final startSeg = random.nextInt(colorCount);
-    final rotatedSegs = [...segs.sublist(startSeg), ...segs.sublist(0, startSeg)];
-    
-    print('🔧 Created ${rotatedSegs.length} segments with lengths: ${lengths.join(', ')}');
-    print('🔧 Starting segment: $startSeg (provides variety without breaking continuity)');
-    
-    return rotatedSegs;
-  }
-  
-  // Build a standard serpentine (snake) Hamiltonian path
-  static List<Pos> _buildSnakeOrder(int gridSize) {
-    final order = <Pos>[];
-    
-    for (int y = 0; y < gridSize; y++) {
-      if (y.isEven) {
-        // Left to right
-        for (int x = 0; x < gridSize; x++) {
-          order.add(Pos(x, y));
-        }
-      } else {
-        // Right to left
-        for (int x = gridSize - 1; x >= 0; x--) {
-          order.add(Pos(x, y));
-        }
-      }
-    }
-    
-    return order;
-  }
-  
-  // Apply random transformations for variety (deterministic based on seed)
-  static List<Pos> _applyTransformations(
-    List<Pos> order,
-    int gridSize,
-    Random random
-  ) {
-    // Apply random grid symmetries (these preserve Manhattan adjacency)
-    // NO ROTATION - it breaks path continuity by creating seams
-    final flipX = random.nextBool();
-    final flipY = random.nextBool();
-    final transpose = random.nextBool();
-    
-    return _applyGridSymmetries(order, gridSize, flipX: flipX, flipY: flipY, transpose: transpose);
-  }
-  
-  // Rotate the order along the snake path - REMOVED (breaks continuity)
-  // static List<Pos> _rotateOrder(List<Pos> order, int offset) { ... }
-  
-  // Apply grid symmetries (flip, transpose) while preserving adjacency
-  static List<Pos> _applyGridSymmetries(
-    List<Pos> order,
-    int gridSize, {
-    required bool flipX,
-    required bool flipY,
-    required bool transpose,
-  }) {
-    return order.map((pos) {
-      int x = pos.x;
-      int y = pos.y;
-      
-      if (transpose) {
-        final temp = x;
-        x = y;
-        y = temp;
-      }
-      
-      if (flipX) {
-        x = gridSize - 1 - x;
-      }
-      
-      if (flipY) {
-        y = gridSize - 1 - y;
-      }
-      
-      return Pos(x, y);
-    }).toList();
-  }
-  
-  // Validate that a specific level is solvable
-  static bool _validateLevelSolvability(List<List<int?>> grid) {
-    final gridSize = grid.length;
-    final colorEndpoints = <int, List<List<int>>>{};
-    
-    // Collect endpoints for each color
-    for (int y = 0; y < gridSize; y++) {
-      for (int x = 0; x < gridSize; x++) {
-        final color = grid[y][x];
-        if (color != null) {
-          if (!colorEndpoints.containsKey(color)) {
-            colorEndpoints[color] = [];
-          }
-          colorEndpoints[color]!.add([x, y]);
-        }
-      }
-    }
-    
-    // Each color must have exactly 2 endpoints
-    for (final endpoints in colorEndpoints.values) {
-      if (endpoints.length != 2) return false;
-    }
-    
-    // Must have at least 2 colors
-    if (colorEndpoints.length < 2) return false;
-    
-    // The Hamiltonian path segmentation algorithm guarantees solvability by construction
-    // Each color gets a segment of the snake path, so paths can't intersect
-    // and the puzzle will always be solvable
-    return true;
-  }
-
-  // Add this assert to catch the exact bug - from ChatGPT's recommendation
-  static void _assertEndpointNeighborsFree(
-    List<List<Pos>> solutionPaths,
-    List<List<int?>> endpoints,
-  ) {
-    for (int c = 0; c < solutionPaths.length; c++) {
-      final seg = solutionPaths[c];
-      final a = seg.first;
-      final b = seg.last;
-      // The neighbor along the path from each endpoint
-      final aNext = seg[1];
-      final bPrev = seg[seg.length - 2];
-
-      // These must NOT be endpoints of any color (only internal path cells)
-      if (endpoints[aNext.y][aNext.x] != null) {
-        throw StateError(
-          'Endpoint neighbor occupied: color $c at ${a} -> ${aNext} is blocked by endpoint color ${endpoints[aNext.y][aNext.x]}',
-        );
-      }
-      if (endpoints[bPrev.y][bPrev.x] != null) {
-        throw StateError(
-          'Endpoint neighbor occupied: color $c at ${b} -> ${bPrev} is blocked by endpoint color ${endpoints[bPrev.y][bPrev.x]}',
-        );
-      }
-    }
-  }
-
-  // Extra guardrail: sanity check that every consecutive pair is Manhattan distance 1
-  static void _assertPathContinuity(List<List<Pos>> solutionPaths) {
-    for (int c = 0; c < solutionPaths.length; c++) {
-      final seg = solutionPaths[c];
-      for (int i = 1; i < seg.length; i++) {
-        final a = seg[i - 1];
-        final b = seg[i];
-        final d = (a.x - b.x).abs() + (a.y - b.y).abs();
-        if (d != 1) {
-          throw StateError(
-            'Discontinuity in segment $c at ${a} -> ${b} (Manhattan distance: $d)',
-          );
-        }
-      }
-    }
-    print('✅ All path segments verified as continuous (Manhattan distance 1 between consecutive cells)');
-  }
-
-  // Internal check: union of order covers grid exactly once
-  static bool _verifyDisjointCover(List<Pos> order, int n) {
-    if (order.length != n * n) return false;
-    final seen = <int>{};
-    for (final p in order) {
-      if (p.x < 0 || p.x >= n || p.y < 0 || p.y >= n) return false;
-      final key = p.y * n + p.x;
-      if (!seen.add(key)) return false;
-    }
-    return true;
-  }
-
-  // Internal check: each solution segment is a simple path of orthogonal steps,
-  // segments are disjoint, and union covers the entire grid.
-  static bool _verifySegments(List<List<Pos>> segs, int n) {
-    final seen = <int>{};
-    int count = 0;
-
-    for (int segIndex = 0; segIndex < segs.length; segIndex++) {
-      final seg = segs[segIndex];
-      if (seg.length < 2) return false;
-
-      for (int i = 0; i < seg.length; i++) {
-        final p = seg[i];
-        final key = p.y * n + p.x;
-        if (!seen.add(key)) return false; // overlap not allowed
-
-        if (i > 0) {
-          final q = seg[i - 1];
-          final d = (p.x - q.x).abs() + (p.y - q.y).abs();
-          if (d != 1) return false; // must be Manhattan-adjacent
-        }
-        count++;
-      }
-    }
-    
-    // For now, we'll be more lenient with coverage
-    // The main requirement is that segments are valid (non-overlapping, continuous paths)
-    // Some cells may remain uncovered, which is acceptable for puzzle variety
-    final coveragePercentage = count / (n * n);
-    if (coveragePercentage < 0.6) { // At least 60% coverage
-      print('⚠️ Low coverage in generation: ${(coveragePercentage * 100).toStringAsFixed(1)}% (${count}/${n * n} cells used)');
-      // Don't fail for low coverage, just warn
-    }
-    
-    return true; // Segments are valid (non-overlapping, continuous paths)
-  }
-
-  // Print a level grid for debugging
-  static void _printLevelGrid(List<List<int?>> grid) {
-    print('Grid:');
-    for (int y = 0; y < grid.length; y++) {
-      String row = '';
-      for (int x = 0; x < grid[y].length; x++) {
-        final color = grid[y][x];
-        if (color == null) {
-          row += '. ';
-        } else {
-          row += '$color ';
-        }
-      }
-      print(row);
-    }
-    print('');
-  }
-
-  // Calculate stars based on moves vs optimal
-  static int calculateStars(int moves, int optimalMoves) {
-    if (moves <= optimalMoves) return 3;
-    if (moves <= optimalMoves + 2) return 2;
-    if (moves <= optimalMoves + 4) return 1;
-    return 0;
   }
 
   // Get level difficulty description
@@ -489,50 +181,6 @@ class LevelData {
     return levelsPerPack;
   }
 
-  // Test method to validate level generation (can be called from UI)
-  static String testLevelGeneration() {
-    final results = <String>[];
-    int totalTested = 0;
-    int solvable = 0;
-    int unsolvable = 0;
-    
-    // Test a sample of levels from different packs
-    final testLevels = [1, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750];
-    
-    for (final levelId in testLevels) {
-      totalTested++;
-      try {
-        final levelData = getLevelData(levelId);
-        final isValid = _validateLevelSolvability(levelData);
-        
-        if (isValid) {
-          solvable++;
-          results.add('✅ Level $levelId: Solvable');
-        } else {
-          unsolvable++;
-          results.add('❌ Level $levelId: Unsolvable');
-          _printLevelGrid(levelData);
-        }
-      } catch (e) {
-        unsolvable++;
-        results.add('❌ Level $levelId: Error - $e');
-      }
-    }
-    
-    final summary = '''
-🧪 LEVEL GENERATION TEST RESULTS:
-Total Tested: $totalTested
-Solvable: $solvable
-Unsolvable: $unsolvable
-Success Rate: ${((solvable / totalTested) * 100).toStringAsFixed(1)}%
-
-${results.join('\n')}
-''';
-    
-    print(summary);
-    return summary;
-  }
-
   // Static method for generating levels
   static List<List<int?>> generateLevel({
     required int gridSize,
@@ -540,17 +188,21 @@ ${results.join('\n')}
     required int seed,
     int minSegmentLen = 2,
   }) {
-    final rng = Random(seed);
-    return _generateHamiltonianSegmentationGrid(gridSize, colorCount, rng, minSegmentLen: minSegmentLen);
+    // Use the fresh generator - guaranteed solvable with full coverage
+    return PuzzleGeneratorFresh.generate(
+      gridSize: gridSize,
+      colorCount: colorCount,
+      seed: seed,
+      minSegmentLen: minSegmentLen,
+    );
   }
-}
 
-// Simple position class for cleaner coordinate handling
-class Pos {
-  final int x;
-  final int y;
-  const Pos(this.x, this.y);
-  
-  @override
-  String toString() => '($x,$y)';
+  // Hash seed method for deterministic level generation
+  static int hashSeed(String input) {
+    int hash = 0;
+    for (int i = 0; i < input.length; i++) {
+      hash = ((hash << 5) - hash + input.codeUnitAt(i)) & 0xFFFFFFFF;
+    }
+    return hash;
+  }
 }

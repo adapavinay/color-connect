@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:color_connect/features/game/domain/entities/level_data.dart';
+import 'package:color_connect/features/game/domain/entities/level_schedule.dart';
 
 class ProgressManager {
   static const String _progressKey = 'player_progress';
@@ -216,5 +217,25 @@ class ProgressManager {
       id = id % total + 1;
     }
     return null; // all solved
+  }
+
+  // Next level the player can actually play (unlocked by stars gate)
+  int? getNextPlayableLevel(int afterLevelId) {
+    final total = LevelData.totalLevels;
+    final totalStars = _totalStars;
+    int id = afterLevelId % total + 1;
+    for (int i = 0; i < total; i++) {
+      final req = starsRequiredForLevel(id);
+      if (totalStars >= req && !isLevelCompleted(id)) return id;
+      id = id % total + 1;
+    }
+    // If all completed, still return next unlocked for replay
+    id = afterLevelId % total + 1;
+    for (int i = 0; i < total; i++) {
+      final req = starsRequiredForLevel(id);
+      if (totalStars >= req) return id;
+      id = id % total + 1;
+    }
+    return null;
   }
 }

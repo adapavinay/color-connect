@@ -1,304 +1,175 @@
 import 'package:flutter/material.dart';
-import 'package:flame/game.dart';
 import 'package:color_connect/core/theme/app_theme.dart';
 import 'package:color_connect/features/game/domain/entities/color_connect_game.dart';
-import 'package:color_connect/features/game/domain/entities/puzzle_grid.dart';
-import 'package:color_connect/features/game/domain/entities/level_data.dart';
 import 'package:color_connect/features/game/domain/entities/level_schedule.dart';
+import 'package:color_connect/features/game/domain/entities/level_data.dart';
+import 'package:color_connect/features/game/presentation/widgets/success_dialog.dart';
 import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
+import 'package:color_connect/level/level_with_auto_repair.dart';
+import 'package:flame/game.dart';
+import 'package:flame/components.dart';
 
 class GamePage extends StatefulWidget {
   final int levelId;
-
-  const GamePage({
-    super.key,
-    required this.levelId,
-  });
+  const GamePage({super.key, required this.levelId});
 
   @override
   State<GamePage> createState() => _GamePageState();
 }
 
-class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
+class _GamePageState extends State<GamePage> {
+  bool _successShown = false;
   late ColorConnectGame _game;
-  late PuzzleGrid _puzzleGrid;
   late ProgressManager _progressManager;
   int _moves = 0;
   int _hints = 3;
   bool _isPaused = false;
-  bool _isGameComplete = false;
-  bool _showHint = false;
-  Map<String, dynamic>? _hintData;
-  
+
   @override
   void initState() {
     super.initState();
+    _progressManager = ProgressManager();
+    _initializeGame();
+  }
+
+  void _initializeGame() {
+    final cfg = configForLevel(widget.levelId);
     _game = ColorConnectGame(
-      gridSize: LevelData.getGridSize(widget.levelId),
-      levelData: LevelData.getLevelData(widget.levelId),
-      onLevelComplete: (completed) {
-        if (completed) {
-          _showLevelCompleteDialog();
+      gridSize: cfg.grid,
+      levelData: LevelData.generateLevel(
+        gridSize: cfg.grid,
+        colorCount: cfg.colors,
+        seed: cfg.seed,
+        minSegmentLen: cfg.minSegmentLen,
+      ),
+      onLevelComplete: (completed) async {
+        if (completed && !_successShown) {
+          _successShown = true;
+          // Award stars (simple heuristic for now: 3 stars)
+          final int stars = 3;
+          await _progressManager.completeLevel(widget.levelId, stars);
+          if (!mounted) return;
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => SuccessDialog(
+              levelId: widget.levelId,
+              stars: stars,
+              onLevelList: () {
+                Navigator.of(context).pop(); // close dialog
+                Navigator.of(context).pop(); // back to level select
+              },
+              onNext: () {
+                Navigator.of(context).pop(); // close dialog
+                final next = _progressManager.getNextPlayableLevel(widget.levelId) ?? widget.levelId;
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => GamePage(levelId: next)),
+                );
+              },
+            ),
+          );
         }
       },
       onMoveCount: (moves) {
         setState(() {
-          _moves += moves;  // Add to the total move count
+          _moves += moves;
         });
       },
     );
-    _progressManager = ProgressManager();
-    _initializeProgress();
-    print('🎮 Game created in initState: $_game');
-  }
-  
-  Future<void> _initializeProgress() async {
-    // await _progressManager.initialize(); // unnecessary here; state already updated in memory
   }
 
   @override
   Widget build(BuildContext context) {
-    final cfg = configForLevel(widget.levelId);
-    final gridSize = cfg.grid;
-    final levelName = 'Level ${widget.levelId}';
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(levelName),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.pause),
-            onPressed: () => _togglePause(),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Game Stats Bar
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            color: AppTheme.primaryColor.withOpacity(0.1),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+    // TODO: Fetch a repaired (if necessary) level grid here and pass to your board.
+    // final levelGrid = levelWithAutoRepair(widget.levelId);
+    return SafeArea(
+      child: LayoutBuilder(builder: (context, c) {
+        final double maxBoard = (c.maxWidth < 560 ? c.maxWidth : 560) - 24;
+        return Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.background,
+          body: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
               children: [
-                _buildStatItem('Moves', _moves.toString(), Icons.touch_app),
-                _buildStatItem('Hints', _hints.toString(), Icons.lightbulb),
-                _buildStatItem('Grid', '${gridSize}x${gridSize}', Icons.grid_on),
-              ],
-            ),
-          ),
-          
-          // Game Canvas with Flame Engine
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.primaryColor, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: AspectRatio(
-                  aspectRatio: 1.0,
-                  child: GestureDetector(
-                    onPanStart: (details) {
-                      // Start the path when pan begins
-                      _handleGameTap(details.localPosition);
-                    },
-                    onPanUpdate: (details) {
-                      // Continue the path as user drags
-                      _handleGameDrag(details.localPosition);
-                    },
-                    onPanEnd: (details) {
-                      // Complete the path
-                      _handleGameDragEnd(details.localPosition);
-                    },
-                    child: GameWidget<ColorConnectGame>(game: _game),
+                _GameTopBar(levelId: widget.levelId),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: Center(
+                    child: Container(
+                      width: maxBoard,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Theme.of(context).dividerColor),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: CCColors.board, // black board ONLY here
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                          padding: const EdgeInsets.all(10),
+                          child: GestureDetector(
+                            onPanStart: (details) {
+                              _handleGameTap(details.localPosition);
+                            },
+                            onPanUpdate: (details) {
+                              _handleGameDrag(details.localPosition);
+                            },
+                            onPanEnd: (details) {
+                              _handleGameDragEnd(details.localPosition);
+                            },
+                            child: GameWidget<ColorConnectGame>(game: _game),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
-          
-          // Game Controls
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildControlButton(
-                  'Undo',
-                  Icons.undo,
-                  _moves > 0 ? () => _undoMove() : null,
+                const SizedBox(height: 8),
+                SafeArea(
+                  top: false,
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.undo_rounded),
+                        label: const Text('Undo'),
+                        onPressed: _moves > 0 ? _undoMove : null,
+                      ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Reset'),
+                        onPressed: _resetLevel,
+                      ),
+                      // Hint = accent filled for visibility
+                      FilledButton(
+                        onPressed: _hints > 0 ? _useHint : null,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: CCColors.accent,
+                          foregroundColor: CCColors.text,
+                          shape: const StadiumBorder(),
+                        ),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.lightbulb_outline_rounded),
+                          SizedBox(width: 8),
+                          Text('Hint'),
+                        ]),
+                      ),
+                    ],
+                  ),
                 ),
-                _buildControlButton(
-                  'Reset',
-                  Icons.refresh,
-                  () => _resetLevel(),
-                ),
-                _buildControlButton(
-                  'Hint',
-                  Icons.lightbulb,
-                  _hints > 0 ? () => _useHint() : null,
-                ),
+                const SizedBox(height: 10),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, color: AppTheme.primaryColor, size: 24),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: AppTheme.primaryColor,
-          ),
-        ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Colors.grey[600],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildControlButton(String label, IconData icon, VoidCallback? onPressed) {
-    final isEnabled = onPressed != null;
-    
-    return Column(
-      children: [
-        ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isEnabled ? AppTheme.primaryColor : Colors.grey,
-            foregroundColor: Colors.white,
-            shape: const CircleBorder(),
-            padding: const EdgeInsets.all(16),
-          ),
-          child: Icon(icon, size: 24),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: isEnabled ? AppTheme.primaryColor : Colors.grey,
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _togglePause() {
-    setState(() {
-      _isPaused = !_isPaused;
-    });
-    
-    if (_isPaused) {
-      _showPauseDialog();
-    }
-  }
-
-  void _showPauseDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Game Paused'),
-        content: const Text('What would you like to do?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() => _isPaused = false);
-            },
-            child: const Text('Resume'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            child: const Text('Exit Level'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _undoMove() {
-    if (_game != null) {
-      _game!.undoLastMove();
-      // The game will call onMoveCount with the updated move count
-    }
-  }
-
-  void _resetLevel() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Level'),
-        content: const Text('Are you sure you want to reset this level?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                _moves = 0;
-                _hints = 3;
-              });
-              // Reset the game instance
-              _game?.resetLevel();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _useHint() {
-    if (_hints > 0 && _game != null) {
-      setState(() {
-        _hints--;
-      });
-      
-      // Get the puzzle grid and find the next best move
-      final puzzleGrid = _game!.puzzleGrid;
-      final hint = puzzleGrid.getHint();
-      
-      if (hint != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Hint: Connect ${hint['color']} from ${hint['from']} to ${hint['to']}'),
-            backgroundColor: AppTheme.primaryColor,
-            duration: const Duration(seconds: 3),
-          ),
         );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No hint available for this puzzle'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    }
+      }),
+    );
   }
 
   void _handleGameTap(Offset localPosition) {
@@ -307,7 +178,7 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
       final cell = _game.puzzleGrid.getCell(gridPosition.x.toInt(), gridPosition.y.toInt());
       
       if (cell != null && cell.isEndpoint && cell.color != null) {
-        // Call the game's path starting method
+        print('🎯 Tapped endpoint at grid position $gridPosition with color ${cell.color}');
         _game.startPath(gridPosition, cell.color!);
       }
     }
@@ -316,7 +187,6 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
   void _handleGameDrag(Offset localPosition) {
     final gridPosition = _getGridPosition(localPosition);
     if (gridPosition != null) {
-      // Continue the path
       _game.updatePath(gridPosition);
     }
   }
@@ -334,330 +204,57 @@ class _GamePageState extends State<GamePage> with TickerProviderStateMixin {
     return _game.puzzleGrid.worldToGrid(gamePosition);
   }
 
-  double _getCellSize(int gridSize) {
-    // Match the cell size calculation from PuzzleGrid
-    if (gridSize <= 3) return 80.0;
-    if (gridSize <= 4) return 80.0 * 0.8; // 64px
-    if (gridSize <= 5) return 80.0 * 0.6; // 48px
-    if (gridSize <= 6) return 80.0 * 0.5; // 40px
-    return 80.0 * 0.4; // 32px for very large grids
-  }
-
-  double _getGameWidth() {
-    final cfg = configForLevel(widget.levelId);
-    final gridSize = cfg.grid;
-    final cellSize = _getCellSize(gridSize);
-    return gridSize * cellSize;
-  }
-
-  double _getGameHeight() {
-    final cfg = configForLevel(widget.levelId);
-    final gridSize = cfg.grid;
-    final cellSize = _getCellSize(gridSize);
-    return gridSize * cellSize;
-  }
-
-  void _showLevelCompleteDialog() async {
-    final levelIndex = widget.levelId;
-    final optimalMoves = LevelData.getOptimalMoves(levelIndex);
-    final stars = LevelData.calculateStars(_moves, optimalMoves);
-    final isLastLevel = widget.levelId >= LevelData.totalLevels;
-    
-    // Save progress first
-    await _progressManager.completeLevel(levelIndex, stars);
-    
-    // Refresh progress manager to get updated data
-    // await _progressManager.initialize(); // unnecessary here; state already updated in memory
-    
-    // Get progress summary for display
-    final progressSummary = _progressManager.getProgressSummary();
-    
-    // Find next available level
-    int nextLevelId = widget.levelId + 1;
-    bool foundNextLevel = false;
-    
-    // Look for the next unsolved level within a reasonable range
-    final maxSearchRange = 50;
-    for (int i = 0; i < maxSearchRange && nextLevelId <= LevelData.totalLevels; i++) {
-      if (!_progressManager.isLevelCompleted(nextLevelId)) {
-        foundNextLevel = true;
-        break;
-      }
-      nextLevelId++;
+  void _undoMove() {
+    if (_game != null) {
+      _game.undoLastMove();
+      setState(() {
+        _moves = (_moves - 1).clamp(0, double.infinity).toInt();
+      });
     }
-    
-    // If no unsolved level found ahead, find the first unsolved level
-    if (!foundNextLevel) {
-      nextLevelId = 1;
-      for (int i = 1; i <= LevelData.totalLevels; i++) {
-        if (!_progressManager.isLevelCompleted(i)) {
-          nextLevelId = i;
-          break;
-        }
-      }
+  }
+
+  void _resetLevel() {
+    setState(() {
+      _moves = 0;
+      _hints = 3;
+    });
+    _game.resetLevel();
+  }
+
+  void _useHint() {
+    if (_hints > 0) {
+      setState(() {
+        _hints--;
+      });
+      // Implement hint logic
     }
-    
-    // Debug information
-    print('🎯 Level ${widget.levelId} completed with $_moves moves');
-    print('🎯 Optimal moves: $optimalMoves');
-    print('🎯 Stars earned: $stars');
-    print('🎯 Total stars: ${progressSummary['totalStars']}');
-    print('🎯 Completed levels: ${progressSummary['completedLevels']}');
-    print('🎯 Next level: $nextLevelId');
-    
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text('🎉 Level ${widget.levelId} Complete!'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                isLastLevel 
-                  ? '🎊 Congratulations! You completed all levels! 🎊'
-                  : 'Great job! Ready for the next challenge?',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 16),
-              // Star rating display
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) => Icon(
-                  index < stars ? Icons.star : Icons.star_border,
-                  color: AppTheme.yellow,
-                  size: 32,
-                )),
-              ),
-              const SizedBox(height: 16),
-              // Progress summary
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Overall Progress',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: AppTheme.primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildProgressItem('⭐ Total Stars', '${progressSummary['totalStars'] ?? 0}'),
-                        _buildProgressItem('🎯 Completed', '${progressSummary['completedLevels'] ?? 0}/${progressSummary['totalLevels'] ?? 800}'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Move count and rating
-              Text(
-                'Your moves: $_moves',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Optimal: $optimalMoves moves',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _getRatingText(stars),
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: _getRatingColor(stars),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (!isLastLevel && foundNextLevel) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.green.withOpacity(0.3)),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Next Level',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: AppTheme.green,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Level $nextLevelId: ${LevelData.getGridSize(nextLevelId)}x${LevelData.getGridSize(nextLevelId)} grid, ${LevelData.getColorCount(nextLevelId)} colors',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.green,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              
-              // Add subtitle above buttons
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  isLastLevel 
-                    ? 'You\'ve completed all levels! 🎊'
-                    : 'Choose your next action:',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-        ),
-        
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                if (!isLastLevel) ...[
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _navigateToNextLevel();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.green,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('Next Level'),
-                  ),
-                ],
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).pop();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Level Select'),
-                ),
-              ],
-            ),
-          ),
+  }
+}
+
+class _GameTopBar extends StatelessWidget {
+  final int levelId;
+  const _GameTopBar({required this.levelId});
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = configForLevel(levelId);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Row(
+        children: [
+          Text('Level $levelId', style: Theme.of(context).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(width: 10),
+          Text('Grid ${cfg.grid}×${cfg.grid}',
+              style: Theme.of(context).textTheme.labelSmall!.copyWith(color: CCColors.subt)),
+          const Spacer(),
+          Text('Moves 14 · Hints 2', style: Theme.of(context).textTheme.labelSmall!.copyWith(color: CCColors.subt)),
         ],
       ),
-    );
-  }
-
-  String _getRatingText(int stars) {
-    switch (stars) {
-      case 3:
-        return 'Perfect! 🏆';
-      case 2:
-        return 'Great! 🌟';
-      case 1:
-        return 'Good! 👍';
-      default:
-        return 'Try again! 💪';
-    }
-  }
-
-  void _navigateToNextLevel() {
-    final currentLevelId = widget.levelId;
-    
-    // Find the next available unsolved level
-    int nextLevelId = currentLevelId + 1;
-    
-    // Look for the next unsolved level within a reasonable range
-    final maxSearchRange = 50; // Don't search too far ahead
-    bool foundNextLevel = false;
-    
-    for (int i = 0; i < maxSearchRange && nextLevelId <= LevelData.totalLevels; i++) {
-      if (!_progressManager.isLevelCompleted(nextLevelId)) {
-        foundNextLevel = true;
-        break;
-      }
-      nextLevelId++;
-    }
-    
-    // If no unsolved level found ahead, go back to find the first unsolved level
-    if (!foundNextLevel) {
-      nextLevelId = 1;
-      for (int i = 1; i <= LevelData.totalLevels; i++) {
-        if (!_progressManager.isLevelCompleted(i)) {
-          nextLevelId = i;
-          break;
-        }
-      }
-    }
-    
-    // Check if next level exists and is valid
-    if (nextLevelId <= LevelData.totalLevels && nextLevelId != currentLevelId) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => GamePage(levelId: nextLevelId),
-        ),
-      );
-    } else {
-      // No more levels to play, go back to level select
-      Navigator.pop(context);
-      Navigator.pop(context);
-    }
-  }
-
-  Color _getRatingColor(int stars) {
-    switch (stars) {
-      case 3:
-        return AppTheme.yellow;
-      case 2:
-        return AppTheme.blue;
-      case 1:
-        return AppTheme.green;
-      default:
-        return Colors.grey;
-    }
-  }
-  
-  Widget _buildProgressItem(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Colors.grey[600],
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
     );
   }
 }
