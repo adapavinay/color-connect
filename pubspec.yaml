@@ -30,6 +30,11 @@ dependencies:
   # Utilities
   collection: ^1.18.0
   meta: ^1.11.0
+  
+  # Monetization
+  google_mobile_ads: ^4.0.0
+  # purchases_flutter: ^6.0.0  # Temporarily disabled due to compatibility issues
+  # app_tracking_transparency: ^2.0.4  # Temporarily disabled
 
 dev_dependencies:
   flutter_test:

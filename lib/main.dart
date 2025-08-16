@@ -6,9 +6,15 @@ import 'package:color_connect/core/app.dart';
 import 'package:color_connect/core/theme/app_theme.dart';
 import 'package:color_connect/level/levels.dart';
 import 'package:color_connect/level/level_validator.dart';
+import 'package:color_connect/services/ads_service.dart';
+import 'package:color_connect/services/consent_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize monetization services
+  await ConsentService().initAndRequestIfNeeded();
+  await AdsService().init(removeAds: false);
   
   // Initialize Hive for local storage
   await Hive.initFlutter();

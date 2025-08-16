@@ -22,3 +22,16 @@ class FeatureFlags {
   /// Default: false (set to true for debugging)
   static const bool verboseLogs = true;
 }
+
+class MonetizationFlags {
+  static const bool adsEnabled = true;
+  static const int interstitialEveryNLevels = 5;
+  static const bool rewardedForHints = true;
+}
+
+class ProductIds {
+  static const String removeAds = 'remove_ads';
+  static const String hints5 = 'hints_5';
+  static const String hints10 = 'hints_10';
+  static const String hints20 = 'hints_20';
+}

@@ -8,6 +8,9 @@ import 'package:color_connect/features/progress/domain/entities/progress_manager
 import 'package:color_connect/level/level_with_auto_repair.dart';
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
+import 'package:color_connect/services/ads_service.dart';
+import 'package:color_connect/core/config/feature_flags.dart';
+import 'package:color_connect/services/hints_manager.dart';
 
 class GamePage extends StatefulWidget {
   final int levelId;
@@ -22,7 +25,6 @@ class _GamePageState extends State<GamePage> {
   late ColorConnectGame _game;
   late ProgressManager _progressManager;
   int _moves = 0;
-  int _hints = 3;
   bool _isPaused = false;
 
   @override
@@ -30,6 +32,15 @@ class _GamePageState extends State<GamePage> {
     super.initState();
     _progressManager = ProgressManager();
     _initializeGame();
+    _loadHints();
+  }
+  
+  Future<void> _loadHints() async {
+    // Ensure hints manager is initialized
+    if (!HintsManager().initialized) {
+      await HintsManager().init();
+    }
+    setState(() {});
   }
 
   void _initializeGame() {
@@ -48,6 +59,13 @@ class _GamePageState extends State<GamePage> {
           // Award stars (simple heuristic for now: 3 stars)
           final int stars = 3;
           await _progressManager.completeLevel(widget.levelId, stars);
+          
+          // Show interstitial ad if eligible
+          await AdsService().showInterstitialIfEligible(
+            widget.levelId, 
+            MonetizationFlags.interstitialEveryNLevels
+          );
+          
           if (!mounted) return;
           showDialog(
             context: context,
@@ -91,7 +109,7 @@ class _GamePageState extends State<GamePage> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Column(
               children: [
-                _GameTopBar(levelId: widget.levelId),
+                _GameTopBar(levelId: widget.levelId, moves: _moves),
                 const SizedBox(height: 12),
                 Expanded(
                   child: Center(
@@ -148,7 +166,7 @@ class _GamePageState extends State<GamePage> {
                       ),
                       // Hint = accent filled for visibility
                       FilledButton(
-                        onPressed: _hints > 0 ? _useHint : null,
+                        onPressed: HintsManager().hasHints ? _useHint : null,
                         style: FilledButton.styleFrom(
                           backgroundColor: CCColors.accent,
                           foregroundColor: CCColors.text,
@@ -216,24 +234,72 @@ class _GamePageState extends State<GamePage> {
   void _resetLevel() {
     setState(() {
       _moves = 0;
-      _hints = 3;
     });
     _game.resetLevel();
   }
 
-  void _useHint() {
-    if (_hints > 0) {
-      setState(() {
-        _hints--;
-      });
-      // Implement hint logic
+  Future<void> _useHint() async {
+    final hintsManager = HintsManager();
+    
+    // Try to use a hint
+    final hintUsed = await hintsManager.use();
+    
+    if (hintUsed) {
+      setState(() {});
+      // TODO: Implement actual hint logic (show next move, highlight path, etc.)
+      debugPrint('Hint used. Remaining: ${hintsManager.hintCount}');
+    } else {
+      // No hints available, show rewarded ad if enabled
+      if (MonetizationFlags.rewardedForHints) {
+        final granted = await AdsService().showRewardedForHint(
+          onEarned: () async {
+            // Grant +1 hint on successful ad view
+            await hintsManager.add(1);
+            setState(() {});
+            debugPrint('Hint granted from ad. New balance: ${hintsManager.hintCount}');
+          },
+        );
+        
+        if (!granted) {
+          // Ad failed or user didn't watch, navigate to store
+          _showStorePrompt();
+        }
+      } else {
+        // Rewarded ads disabled, show store prompt
+        _showStorePrompt();
+      }
     }
+  }
+  
+  void _showStorePrompt() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Out of Hints'),
+        content: const Text('Watch a short ad to earn a free hint, or purchase hint packs from the store.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // TODO: Navigate to store page
+              // Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StorePage()));
+            },
+            child: const Text('Go to Store'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class _GameTopBar extends StatelessWidget {
   final int levelId;
-  const _GameTopBar({required this.levelId});
+  final int moves;
+  const _GameTopBar({required this.levelId, required this.moves});
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +318,10 @@ class _GameTopBar extends StatelessWidget {
           Text('Grid ${cfg.grid}×${cfg.grid}',
               style: Theme.of(context).textTheme.labelSmall!.copyWith(color: CCColors.subt)),
           const Spacer(),
-          Text('Moves 14 · Hints 2', style: Theme.of(context).textTheme.labelSmall!.copyWith(color: CCColors.subt)),
+          Text(
+            'Moves $moves · Hints ${HintsManager().hintCount}',
+            style: Theme.of(context).textTheme.labelSmall!.copyWith(color: CCColors.subt),
+          ),
         ],
       ),
     );
