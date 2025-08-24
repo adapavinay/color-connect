@@ -5,7 +5,27 @@ import 'package:color_connect/services/ads_service.dart';
 import 'package:color_connect/services/consent_service.dart';
 import 'package:color_connect/services/hints_manager.dart';
 import 'package:color_connect/core/config/feature_flags.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:color_connect/features/store/presentation/pages/star_store_page.dart';
+// import 'package:purchases_flutter/purchases_flutter.dart'; // Temporarily disabled
+
+// Temporary StoreProduct class for testing
+class StoreProduct {
+  final String identifier;
+  final String title;
+  final String description;
+  final double price;
+  final String priceString;
+  final String currencyCode;
+
+  StoreProduct({
+    required this.identifier,
+    required this.title,
+    required this.description,
+    required this.price,
+    required this.priceString,
+    required this.currencyCode,
+  });
+}
 
 class StorePage extends StatefulWidget {
   const StorePage({super.key});
@@ -30,11 +50,28 @@ class _StorePageState extends State<StorePage> {
     setState(() => _isLoading = true);
     
     try {
-      // Load available products
-      _availableProducts = await IapService().getAvailableProducts();
+      // Load available products (temporarily disabled)
+      _availableProducts = [
+        StoreProduct(
+          identifier: ProductIds.removeAds,
+          title: 'Remove Ads',
+          description: 'Remove all ads from the game',
+          price: 2.99,
+          priceString: '\$2.99',
+          currencyCode: 'USD',
+        ),
+        StoreProduct(
+          identifier: ProductIds.hints5,
+          title: '5 Hints',
+          description: 'Get 5 hints',
+          price: 0.99,
+          priceString: '\$0.99',
+          currencyCode: 'USD',
+        ),
+      ];
       
-      // Check current remove ads status
-      _hasRemoveAds = IapService().removeAds;
+      // Check current remove ads status (temporarily disabled)
+      _hasRemoveAds = false;
       
       // Load current hints
       _currentHints = HintsManager().hintCount;
@@ -51,15 +88,8 @@ class _StorePageState extends State<StorePage> {
     setState(() => _isLoading = true);
     
     try {
-      final success = await IapService().purchaseRemoveAds();
-      if (success) {
-        setState(() {
-          _hasRemoveAds = true;
-        });
-        _showSuccessDialog('Remove Ads purchased successfully!');
-      } else {
-        _showErrorDialog('Failed to purchase Remove Ads');
-      }
+      // Temporarily disabled IAP
+      _showErrorDialog('IAP temporarily disabled for testing');
     } catch (e) {
       _showErrorDialog('Error: $e');
     } finally {
@@ -71,17 +101,13 @@ class _StorePageState extends State<StorePage> {
     setState(() => _isLoading = true);
     
     try {
-      final success = await IapService().purchaseHintsPack(productId);
-      if (success) {
-        // Add hints to manager
-        await HintsManager().add(hintCount);
-        setState(() {
-          _currentHints = HintsManager().hintCount;
-        });
-        _showSuccessDialog('$hintCount hints added to your account!');
-      } else {
-        _showErrorDialog('Failed to purchase hints');
-      }
+      // Temporarily disabled IAP - just add hints for testing
+      await HintsManager().init();
+      await HintsManager().add(hintCount);
+      setState(() {
+        _currentHints = HintsManager().hintCount;
+      });
+      _showSuccessDialog('$hintCount hints added to your account! (Testing mode)');
     } catch (e) {
       _showErrorDialog('Error: $e');
     } finally {
@@ -93,14 +119,8 @@ class _StorePageState extends State<StorePage> {
     setState(() => _isLoading = true);
     
     try {
-      final success = await IapService().restore();
-      if (success) {
-        // Reload store data to reflect restored purchases
-        await _loadStoreData();
-        _showSuccessDialog('Purchases restored successfully!');
-      } else {
-        _showErrorDialog('No purchases to restore');
-      }
+      // Temporarily disabled IAP
+      _showErrorDialog('IAP temporarily disabled for testing');
     } catch (e) {
       _showErrorDialog('Error restoring purchases: $e');
     } finally {
@@ -110,9 +130,8 @@ class _StorePageState extends State<StorePage> {
 
   Future<void> _manageConsent() async {
     try {
-      await ConsentService().manageConsent();
-      // Reload store data to reflect consent changes
-      await _loadStoreData();
+      // Temporarily disabled
+      _showErrorDialog('Consent management temporarily disabled for testing');
     } catch (e) {
       _showErrorDialog('Error managing consent: $e');
     }
@@ -277,7 +296,60 @@ class _StorePageState extends State<StorePage> {
             const SizedBox(height: 8),
             _buildHintPackButton(ProductIds.hints10, 10),
             const SizedBox(height: 8),
-            _buildHintPackButton(ProductIds.hints20, 20),
+                                     _buildHintPackButton(ProductIds.hints20, 20),
+                       ],
+                     ),
+                   ),
+                 );
+               }
+
+  Widget _buildStarStoreSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.star, color: Colors.amber, size: 32),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Star Store',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Text(
+                        'Earn stars through gameplay and rewards',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  debugPrint('🚀 Navigating to StarStorePage');
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const StarStorePage(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.star),
+                label: const Text('Go to Star Store'),
+              ),
+            ),
           ],
         ),
       ),
@@ -339,9 +411,11 @@ class _StorePageState extends State<StorePage> {
                 children: [
                   _buildRemoveAdsSection(),
                   const SizedBox(height: 16),
-                  _buildHintsSection(),
-                  const SizedBox(height: 16),
-                  Card(
+                                           _buildHintsSection(),
+                         const SizedBox(height: 16),
+                         _buildStarStoreSection(),
+                         const SizedBox(height: 16),
+                         Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(

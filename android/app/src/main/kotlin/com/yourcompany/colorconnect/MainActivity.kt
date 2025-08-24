@@ -1,4 +1,4 @@
-package com.example.color_connect
+package com.yourcompany.colorconnect
 
 import io.flutter.embedding.android.FlutterActivity
 

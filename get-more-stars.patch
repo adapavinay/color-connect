@@ -1,0 +1,159 @@
+*** a/lib/core/config/feature_flags.dart
+--- b/lib/core/config/feature_flags.dart
+@@
+ class ProductIds {
+   static const String removeAds = 'remove_ads';
+   static const String hints5 = 'hints_5';
+   static const String hints10 = 'hints_10';
+   static const String hints20 = 'hints_20';
+ }
++
++/// Rewarded video → stars config
++class StarRewards {
++  /// Turn the "Get more stars" (rewarded ad) on/off
++  static const bool enabled = true;
++  /// Stars granted per rewarded ad view
++  static const int starsPerAd = 1;
++  /// Simple daily cap to prevent abuse
++  static const int dailyCap = 5;
++}
+*** /dev/null
+--- b/lib/features/store/domain/daily_rewards_manager.dart
+@@
++import 'package:shared_preferences/shared_preferences.dart';
++
++/// Tracks how many rewarded-star grants happened today.
++class DailyRewardsManager {
++  static const _kCountKey = 'daily_star_reward_count';
++  static const _kDateKey = 'daily_star_reward_date';
++
++  /// Returns remaining grants for today.
++  static Future<int> remainingToday(int dailyCap) async {
++    final prefs = await SharedPreferences.getInstance();
++    final today = DateTime.now();
++    final todayStr = '${today.year}-${today.month}-${today.day}';
++    final lastDate = prefs.getString(_kDateKey);
++    int count = prefs.getInt(_kCountKey) ?? 0;
++    if (lastDate != todayStr) {
++      // New day → reset
++      await prefs.setString(_kDateKey, todayStr);
++      await prefs.setInt(_kCountKey, 0);
++      return dailyCap;
++    }
++    return (dailyCap - count).clamp(0, dailyCap);
++  }
++
++  static Future<void> increment() async {
++    final prefs = await SharedPreferences.getInstance();
++    final today = DateTime.now();
++    final todayStr = '${today.year}-${today.month}-${today.day}';
++    final lastDate = prefs.getString(_kDateKey);
++    int count = prefs.getInt(_kCountKey) ?? 0;
++    if (lastDate != todayStr) {
++      await prefs.setString(_kDateKey, todayStr);
++      count = 0;
++    }
++    await prefs.setInt(_kCountKey, count + 1);
++  }
++}
+*** a/lib/features/store/presentation/pages/star_store_page.dart
+--- b/lib/features/store/presentation/pages/star_store_page.dart
+@@
++import 'package:color_connect/core/config/feature_flags.dart';
++import 'package:color_connect/services/ads_service.dart';
++import 'package:color_connect/features/store/domain/daily_rewards_manager.dart';
++import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
+@@
+   @override
+   Widget build(BuildContext context) {
+     // ... your existing UI ...
+ 
++    Widget getMoreStarsTile = Card(
++      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
++      child: Padding(
++        padding: const EdgeInsets.all(16.0),
++        child: Row(
++          children: [
++            const Icon(Icons.star, size: 28),
++            const SizedBox(width: 12),
++            Expanded(
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: const [
++                  Text('Get more stars',
++                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
++                  SizedBox(height: 4),
++                  Text('Watch a short video to earn stars.',
++                      style: TextStyle(fontSize: 13)),
++                ],
++              ),
++            ),
++            const SizedBox(width: 12),
++            ElevatedButton(
++              onPressed: () async {
++                if (!StarRewards.enabled) {
++                  ScaffoldMessenger.of(context).showSnackBar(
++                    const SnackBar(content: Text('Temporarily unavailable')),
++                  );
++                  return;
++                }
++                final remaining =
++                    await DailyRewardsManager.remainingToday(StarRewards.dailyCap);
++                if (remaining <= 0) {
++                  ScaffoldMessenger.of(context).showSnackBar(
++                    const SnackBar(content: Text('Daily limit reached. Try again tomorrow!')),
++                  );
++                  return;
++                }
++                // Show rewarded ad and grant stars on reward
++                final granted = await AdsService().showRewardedForHint(onEarned: () async {
++                  await ProgressManager().addBonusStars(StarRewards.starsPerAd);
++                  await DailyRewardsManager.increment();
++                });
++                if (granted) {
++                  if (context.mounted) {
++                    final newRemaining =
++                        await DailyRewardsManager.remainingToday(StarRewards.dailyCap);
++                    ScaffoldMessenger.of(context).showSnackBar(
++                      SnackBar(content: Text(
++                        '⭐ +${StarRewards.starsPerAd} star${StarRewards.starsPerAd==1?'':'s'} added. ($newRemaining left today)',
++                      )),
++                    );
++                  }
++                  // Force UI refresh if you display total stars here
++                  // setState(() {});
++                } else {
++                  if (context.mounted) {
++                    ScaffoldMessenger.of(context).showSnackBar(
++                      const SnackBar(content: Text('Ad not available. Please try again.')),
++                    );
++                  }
++                }
++              },
++              child: const Text('Watch'),
++            ),
++          ],
++        ),
++      ),
++    );
++
+@@
+-    return Scaffold(
++    return Scaffold(
+       appBar: AppBar(
+         title: const Text('Star Store'),
+       ),
+-      body: Padding(
++      body: Padding(
+         padding: const EdgeInsets.all(16.0),
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.stretch,
+           children: [
+             // your existing store tiles / packs here...
++            const SizedBox(height: 8),
++            getMoreStarsTile,
+           ],
+         ),
+       ),
+     );
+   }

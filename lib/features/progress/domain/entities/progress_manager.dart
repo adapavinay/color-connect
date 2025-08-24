@@ -99,6 +99,16 @@ class ProgressManager {
     return _levelScores[levelId] ?? 0;
   }
 
+  // Add bonus stars (e.g., from rewarded ads)
+  Future<void> addBonusStars(int stars) async {
+    if (stars <= 0) return;
+    
+    _totalStars += stars;
+    await _saveProgress();
+    
+    print('⭐ Bonus stars added: +$stars (Total: $_totalStars)');
+  }
+
   // Check if a level is completed
   bool isLevelCompleted(int levelId) {
     return _completedLevels.contains(levelId);
@@ -164,13 +174,7 @@ class ProgressManager {
     await _saveProgress();
   }
 
-  // Add bonus stars (from purchases or rewards)
-  Future<void> addBonusStars(int stars) async {
-    if (stars > 0) {
-      _totalStars += stars;
-      await _saveProgress();
-    }
-  }
+
 
   // Get pack progress
   Map<String, dynamic> getPackProgress(int packNumber) {

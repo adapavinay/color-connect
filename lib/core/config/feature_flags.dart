@@ -35,3 +35,13 @@ class ProductIds {
   static const String hints10 = 'hints_10';
   static const String hints20 = 'hints_20';
 }
+
+/// Rewarded video → stars config
+class StarRewards {
+  /// Turn the "Get more stars" (rewarded ad) on/off
+  static const bool enabled = true;
+  /// Stars granted per rewarded ad view
+  static const int starsPerAd = 1;
+  /// Simple daily cap to prevent abuse
+  static const int dailyCap = 5;
+}

@@ -1,291 +1,132 @@
 import 'package:flutter/material.dart';
-import 'package:color_connect/core/theme/app_theme.dart';
+import 'package:color_connect/core/config/feature_flags.dart';
+import 'package:color_connect/services/ads_service.dart';
+import 'package:color_connect/features/store/domain/daily_rewards_manager.dart';
+import 'package:color_connect/features/progress/domain/entities/progress_manager.dart';
 
-class StarStorePage extends StatelessWidget {
+class StarStorePage extends StatefulWidget {
   const StarStorePage({super.key});
 
   @override
+  State<StarStorePage> createState() => _StarStorePageState();
+}
+
+class _StarStorePageState extends State<StarStorePage> {
+  bool _busy = false;
+
+  Future<void> _onWatchPressed() async {
+    debugPrint('🎯 _onWatchPressed called!');
+    if (_busy) {
+      debugPrint('🚫 Already busy, returning');
+      return;
+    }
+    setState(() => _busy = true);
+    debugPrint('🔄 Set busy to true');
+    try {
+      debugPrint('✅ StarRewards.enabled: ${StarRewards.enabled}');
+      if (!StarRewards.enabled) {
+        debugPrint('❌ StarRewards disabled');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Temporarily unavailable')),
+        );
+        return;
+      }
+
+      final remaining = await DailyRewardsManager.remainingToday(StarRewards.dailyCap);
+      if (remaining <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Daily limit reached. Try again tomorrow!')),
+        );
+        return;
+      }
+
+      final granted = await AdsService().showRewardedForHint(onEarned: () async {
+        await ProgressManager().addBonusStars(StarRewards.starsPerAd);
+        await DailyRewardsManager.increment();
+      });
+
+      if (granted) {
+        if (!mounted) return;
+        final newRemaining =
+            await DailyRewardsManager.remainingToday(StarRewards.dailyCap);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '⭐ +${StarRewards.starsPerAd} star${StarRewards.starsPerAd == 1 ? '' : 's'} added. ($newRemaining left today)',
+            ),
+          ),
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ad not available. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    debugPrint('🏗️ StarStorePage build called');
+    final getMoreStarsTile = InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: _busy ? null : () {
+        debugPrint('👆 InkWell onTap triggered!');
+        _onWatchPressed();
+      },
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              const Icon(Icons.star, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text('Get more stars',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    SizedBox(height: 4),
+                    Text('Watch a short video to earn stars.',
+                        style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: _busy ? null : _onWatchPressed,
+                child: _busy
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Watch'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('⭐ Star Store'),
-        backgroundColor: AppTheme.primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
+        title: const Text('Star Store'),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppTheme.primaryColor,
-              AppTheme.primaryColor.withOpacity(0.8),
-              AppTheme.secondaryColor,
-            ],
-          ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // your existing store tiles / packs here...
+            const SizedBox(height: 8),
+            getMoreStarsTile,
+          ],
         ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.star,
-                        size: 48,
-                        color: Colors.amber,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Need More Stars?',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: AppTheme.primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Unlock levels and achieve perfect scores!',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Star Packages
-                Expanded(
-                  child: ListView(
-                    children: [
-                      _buildStarPackage(
-                        context,
-                        title: 'Starter Pack',
-                        stars: 15,
-                        price: 0.99,
-                        isPopular: false,
-                        description: 'Perfect for beginners',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildStarPackage(
-                        context,
-                        title: 'Value Pack',
-                        stars: 50,
-                        price: 2.99,
-                        isPopular: true,
-                        description: 'Most popular choice',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildStarPackage(
-                        context,
-                        title: 'Mega Pack',
-                        stars: 150,
-                        price: 6.99,
-                        isPopular: false,
-                        description: 'Great value for money',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildStarPackage(
-                        context,
-                        title: 'Unlimited Pack',
-                        stars: 500,
-                        price: 19.99,
-                        isPopular: false,
-                        description: 'For serious players',
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Bottom Info
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        '💡 Tip: Watch ads to earn free stars!',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Prices in USD. Local currency will be shown at checkout.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStarPackage(
-    BuildContext context, {
-    required String title,
-    required int stars,
-    required double price,
-    required bool isPopular,
-    required String description,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(20),
-        border: isPopular
-            ? Border.all(color: AppTheme.primaryColor, width: 3)
-            : null,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          if (isPopular)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                '🔥 MOST POPULAR',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          if (isPopular) const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppTheme.primaryColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    description,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.star,
-                        color: Colors.amber,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$stars',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: AppTheme.primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    '\$${price.toStringAsFixed(2)}',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: AppTheme.primaryColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: () => _purchaseStars(context, stars, price),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: Text(
-                'Buy Now',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _purchaseStars(BuildContext context, int stars, double price) {
-    // TODO: Implement in-app purchase
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Purchase Stars'),
-        content: Text('This would purchase $stars stars for \$${price.toStringAsFixed(2)}. In-app purchase integration coming soon!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
       ),
     );
   }
